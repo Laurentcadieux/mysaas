@@ -97,9 +97,20 @@ async function proxyToApi(request, response, url) {
 
 function forwardedHeaders(request) {
   const headers = new Headers();
+  const blockedHeaders = new Set([
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade"
+  ]);
 
   for (const [name, value] of Object.entries(request.headers)) {
-    if (value === undefined || name.toLowerCase() === "host") {
+    const headerName = name.toLowerCase();
+    if (value === undefined || headerName === "host" || blockedHeaders.has(headerName)) {
       continue;
     }
     if (Array.isArray(value)) {
