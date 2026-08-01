@@ -17,6 +17,10 @@ export function createApp(config: AppConfig, repository: LeadStore) {
     res.status(200).json({ status: "ok", service: "adviceconnect-backend" });
   });
 
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ status: "ok", service: "adviceconnect-backend" });
+  });
+
   app.post("/api/leads", (req, res) => {
     const input = validateLeadPayload(req.body);
     const lead = repository.createLead(createLeadFromInput(input));

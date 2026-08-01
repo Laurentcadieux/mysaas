@@ -58,4 +58,25 @@ npm test
 npm run e2e
 ```
 
-The current MVP is local-only. Publishing to the Azure DMZ / Proxmox path requires a separate deployment plan and explicit approval.
+## Staging Deployment Prep
+
+The first staging target is the existing Azure DMZ / Proxmox path documented in:
+
+```text
+/home/work10/.openclaw/workspace/proxmox/azure-dmz-proxmox-backend-vnet/
+```
+
+Use [deploy-runbook.md](deploy-runbook.md) for the MySaas-specific application deployment steps only.
+
+Repository-safe templates:
+
+- `backend.env.example` - backend production environment shape.
+- `frontend.env.example` - frontend production environment shape.
+- `systemd/adviceconnect-frontend.service.template` - frontend web service unit.
+- `systemd/adviceconnect-backend.service.template` - backend service unit.
+
+After staging DNS and routes are live, run:
+
+```bash
+STAGING_BASE_URL=https://staging.example.com npm run smoke:staging
+```

@@ -97,6 +97,15 @@ describe("backend api", () => {
     expect(response.body).toEqual({ status: "ok", service: "adviceconnect-backend" });
   });
 
+  it("returns backend health under the api route for frontend proxy smoke checks", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const response = await request(harness.app).get("/api/health");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: "ok", service: "adviceconnect-backend" });
+  });
+
   it("creates a lead with normalized persisted data and default indicators", async () => {
     const harness = makeHarness({ enableDevLeadList: true });
     cleanup = harness.cleanup;

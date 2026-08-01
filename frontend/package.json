@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
+    "start": "node server.mjs",
     "dev": "vite --host 127.0.0.1 --port 5173",
     "dev:e2e": "vite --host 127.0.0.1 --port 4173",
     "test": "vitest",

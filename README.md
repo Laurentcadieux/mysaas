@@ -4,18 +4,13 @@ MySaas is the workspace for building AdviceConnect, a SaaS platform for conversa
 
 ## Current Infrastructure Awareness
 
-This project starts with these deployed servers already available:
+This project starts from the deployed infrastructure documented in:
 
-| Role | Server | Addressing | Purpose |
-| --- | --- | --- | --- |
-| Public Azure entrypoint | Azure DMZ proxy | Public + private Azure addressing | HTTPS nginx proxy in Azure DMZ |
-| Local frontend web server | Proxmox frontend VM | Local + private backend addressing | Current Node.js/React web host |
-| Local backend services server | Proxmox backend VM | Private backend addressing | Private backend service host |
-| Azure-to-local VPN server | Dedicated Linux VPN VM | Local + backend gateway addressing | strongSwan VPN gateway |
+```text
+/home/work10/.openclaw/workspace/proxmox/azure-dmz-proxmox-backend-vnet/
+```
 
-Public URL currently routed through this stack:
-
-The public DNS and some existing resource names still contain legacy strings. Treat them as live infrastructure names, not product branding for MySaas. Keep exact operational inventory in restricted local notes.
+Treat that project as the source of truth for Azure, Proxmox, VPN, DNS, certificates, VM IDs, private IPs, routes, and operational checks. MySaas owns the application stack that runs on top of those servers.
 
 ## Target Product Direction
 
@@ -49,6 +44,7 @@ The first working product slice is local-only:
 
 - React lead-capture form in `frontend/`.
 - Express API in `backend/`.
+- Node frontend service that serves the built React app and proxies same-origin `/api`.
 - SQLite development persistence under `data/`.
 - Playwright E2E tests under `e2e/`.
 
@@ -82,5 +78,5 @@ Frontend defaults to same-origin `/api`. Use `VITE_BACKEND_PROXY_TARGET` for loc
 - Do not expose local backend VMs directly to the internet.
 - Keep Azure as the only public edge.
 - Keep backend traffic on the private backend network.
-- Use VM `108` as the Azure-to-local VPN connector unless a planned migration replaces it.
+- Use the infrastructure project as the source of truth for VPN connector, VM, route, and public endpoint details.
 - Update the docs when adding a frontend route, backend service, VM, DNS name, port, or secret location.

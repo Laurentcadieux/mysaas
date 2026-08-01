@@ -1,34 +1,21 @@
 # Infrastructure Awareness
 
-This file is the repository-safe source of truth for how MySaas sees the existing infrastructure.
+The infrastructure source of truth for MySaas is:
 
-Exact IPs, SSH paths, and secret locations belong in restricted local operations notes, not public application docs.
+```text
+/home/work10/.openclaw/workspace/proxmox/azure-dmz-proxmox-backend-vnet/
+```
 
-## Azure
+Use that project for Azure, Proxmox, VPN, DNS, certificates, VM IDs, IP addresses, routes, and infrastructure health checks. Do not duplicate those values here; duplication creates drift.
 
-- Azure is the public DMZ and TLS termination layer.
-- The public proxy forwards approved application routes over the private Azure-to-local path.
-- Resource names may include legacy operational strings and should not be renamed casually.
+## MySaas Application Assumptions
 
-## Proxmox
-
-- Proxmox hosts the private frontend and backend workload VMs.
-- Backend services stay on the private backend bridge.
-- A dedicated Linux VPN VM owns the local VPN gateway role.
-
-## Local Servers
-
-- Frontend web host: local Proxmox VM, reached publicly only through Azure.
-- Backend services host: private Proxmox VM, not directly internet-exposed.
-- VPN connector: dedicated local Linux VM running strongSwan.
-
-## Active Routing
-
-Azure DMZ routes to the local backend network through the site-to-site VPN. Local application VMs route Azure-bound traffic through the dedicated VPN connector.
-
-## Important Names
-
-Some existing resource names include legacy text. These names are operational identifiers. Do not change them until a specific rename/migration task is planned.
+- The public HTTPS route is owned by the existing Azure DMZ path.
+- MySaas frontend runs as an application service on the existing local web VM.
+- MySaas backend runs as a private application service on the existing backend VM.
+- The frontend service proxies same-origin `/api/*` to the backend service.
+- The backend service is not directly internet-exposed.
+- MySaas requires Node.js `22.13.x` or another supported Node `22.x` runtime.
 
 ## Secret Handling
 

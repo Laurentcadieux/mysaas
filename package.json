@@ -11,7 +11,8 @@
     "build": "npm --workspace backend run build && npm --workspace frontend run build && node scripts/verify-frontend-build.mjs",
     "test": "npm --workspace backend test -- --run && npm --workspace frontend test -- --run",
     "e2e": "playwright test; status=$?; rm -rf .e2e; exit $status",
-    "lint": "npm --workspace backend run lint && npm --workspace frontend run lint"
+    "lint": "npm --workspace backend run lint && npm --workspace frontend run lint",
+    "smoke:staging": "node scripts/smoke-staging.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"
