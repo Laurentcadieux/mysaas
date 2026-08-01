@@ -1,6 +1,6 @@
 # MySaas
 
-MySaas is the new SaaS project that will use the existing Azure DMZ and Proxmox backend infrastructure.
+MySaas is the workspace for building AdviceConnect, a SaaS platform for conversational lead generation and advisory agents.
 
 ## Current Infrastructure Awareness
 
@@ -23,7 +23,7 @@ The public DNS and some existing resource names still contain legacy strings. Tr
 
 ## Target Product Direction
 
-MySaas will become a custom SaaS application with:
+AdviceConnect will become a custom SaaS application with:
 
 - A frontend served from the local web tier and published securely through Azure.
 - Backend APIs/services hosted privately on the Proxmox backend network.
@@ -31,11 +31,14 @@ MySaas will become a custom SaaS application with:
 - Proxmox as the private workload zone.
 - Site-to-site VPN as the private path between Azure and local backend servers.
 
+See [docs/project-charter.md](docs/project-charter.md) for the full product charter.
+
 ## Project Layout
 
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` | Instructions for future agents working on MySaas |
+| `docs/project-charter.md` | AdviceConnect project charter and MVP scope |
 | `docs/infrastructure-awareness.md` | Deployed Azure/Proxmox facts this project depends on |
 | `docs/architecture.md` | Initial SaaS architecture |
 | `frontend/README.md` | Frontend plan and deployment notes |

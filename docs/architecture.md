@@ -2,7 +2,7 @@
 
 ## Initial Shape
 
-MySaas will use a split public/private model:
+AdviceConnect will use a split public/private model:
 
 - Azure handles public TLS, DNS, and ingress.
 - Proxmox hosts the SaaS frontend and backend workloads.

@@ -4,7 +4,9 @@ You are working in the MySaas project.
 
 ## Project Context
 
-MySaas is a custom SaaS application that will run on the existing hybrid Azure and Proxmox environment.
+MySaas is the workspace for building AdviceConnect, a custom SaaS application that will run on the existing hybrid Azure and Proxmox environment.
+
+Read `docs/project-charter.md` before making product decisions. It defines the AdviceConnect brand, MVP scope, roles, data model, pricing direction, and delivery phases.
 
 The infrastructure already exists:
 
