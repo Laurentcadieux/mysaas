@@ -1,11 +1,15 @@
 import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
 import type { AppConfig } from "./config.js";
+import {
+  createWorkspaceSetupFromInput,
+  validateWorkspaceSetupPayload
+} from "./foundationContract.js";
 import { createLeadFromInput, LeadValidationError, validateLeadPayload } from "./leadContract.js";
-import type { LeadStore } from "./leadRepository.js";
+import type { ApplicationStore } from "./leadRepository.js";
 import { requestLogger } from "./logger.js";
 
-export function createApp(config: AppConfig, repository: LeadStore) {
+export function createApp(config: AppConfig, repository: ApplicationStore) {
   const app = express();
 
   app.disable("x-powered-by");
@@ -25,6 +29,22 @@ export function createApp(config: AppConfig, repository: LeadStore) {
     const input = validateLeadPayload(req.body);
     const lead = repository.createLead(createLeadFromInput(input));
     res.status(201).json({ lead });
+  });
+
+  app.post("/api/foundation/workspaces", (req, res) => {
+    const input = validateWorkspaceSetupPayload(req.body);
+    const setup = repository.createWorkspaceSetup(createWorkspaceSetupFromInput(input));
+    res.status(201).json({ workspace: setup });
+  });
+
+  app.get("/api/foundation/workspaces/:organizationId", (req, res) => {
+    const setup = repository.getWorkspaceSetup(req.params.organizationId);
+    if (!setup) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found." } });
+      return;
+    }
+
+    res.status(200).json({ workspace: setup });
   });
 
   app.get("/api/leads", (_req, res) => {

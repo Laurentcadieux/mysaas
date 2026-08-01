@@ -8,7 +8,7 @@ test("submits a synthetic lead through the UI and verifies backend persistence",
 
   await page.getByRole("textbox", { name: "First name" }).fill("Ava");
   await page.getByRole("textbox", { name: "Last name" }).fill("Smith");
-  await page.getByRole("textbox", { name: "Email" }).fill("AVA@EXAMPLE.COM");
+  await page.getByRole("textbox", { name: "Email", exact: true }).fill("AVA@EXAMPLE.COM");
   await page.getByRole("textbox", { name: "Phone" }).fill("555-0100");
   await page.getByRole("textbox", { name: "Company" }).fill("Example Co");
   await page.getByRole("textbox", { name: "Service interest" }).fill("Lead generation");

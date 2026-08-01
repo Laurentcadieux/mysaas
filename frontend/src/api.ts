@@ -23,6 +23,51 @@ export interface LeadResponse {
   };
 }
 
+export interface WorkspaceSetupSubmission {
+  organizationName: string;
+  website: string;
+  ownerName: string;
+  ownerEmail: string;
+  projectName: string;
+  agentName: string;
+  objective: string;
+}
+
+export interface WorkspaceSetupResponse {
+  workspace: {
+    organization: {
+      id: string;
+      name: string;
+      website: string;
+      createdAt: string;
+    };
+    owner: {
+      id: string;
+      fullName: string;
+      email: string;
+      createdAt: string;
+    };
+    subscription: {
+      id: string;
+      planCode: string;
+      status: string;
+      currentPeriodEnd: string;
+    };
+    project: {
+      id: string;
+      name: string;
+      objective: string;
+      status: string;
+    };
+    agent: {
+      id: string;
+      name: string;
+      type: string;
+      status: string;
+    };
+  };
+}
+
 export class ApiError extends Error {
   constructor(message: string) {
     super(message);
@@ -69,4 +114,24 @@ export async function submitLead(payload: LeadSubmission): Promise<LeadResponse>
   }
 
   return body as LeadResponse;
+}
+
+export async function createWorkspaceSetup(
+  payload: WorkspaceSetupSubmission
+): Promise<WorkspaceSetupResponse> {
+  const response = await fetch(`${configuredBaseUrl}/api/foundation/workspaces`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message =
+      body?.error?.message ?? "We could not create the workspace right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body as WorkspaceSetupResponse;
 }

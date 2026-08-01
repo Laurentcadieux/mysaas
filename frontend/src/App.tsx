@@ -1,10 +1,22 @@
 import { useState } from "react";
-import { submitLead, type LeadSubmission } from "./api.js";
+import {
+  createWorkspaceSetup,
+  submitLead,
+  type LeadSubmission,
+  type WorkspaceSetupResponse,
+  type WorkspaceSetupSubmission
+} from "./api.js";
 
 type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
   | { status: "success"; leadId: string }
+  | { status: "error"; message: string };
+
+type WorkspaceState =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "success"; workspace: WorkspaceSetupResponse["workspace"] }
   | { status: "error"; message: string };
 
 const initialLead: LeadSubmission = {
@@ -22,14 +34,70 @@ const initialLead: LeadSubmission = {
   source: "website-form"
 };
 
+const initialWorkspace: WorkspaceSetupSubmission = {
+  organizationName: "",
+  website: "",
+  ownerName: "",
+  ownerEmail: "",
+  projectName: "",
+  agentName: "",
+  objective: ""
+};
+
 export function App() {
   const [lead, setLead] = useState<LeadSubmission>(initialLead);
   const [state, setState] = useState<SubmitState>({ status: "idle" });
+  const [workspace, setWorkspace] = useState<WorkspaceSetupSubmission>(initialWorkspace);
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
 
   const isSubmitting = state.status === "submitting";
+  const isCreatingWorkspace = workspaceState.status === "submitting";
 
   function updateLead<K extends keyof LeadSubmission>(field: K, value: LeadSubmission[K]) {
     setLead((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateWorkspace<K extends keyof WorkspaceSetupSubmission>(
+    field: K,
+    value: WorkspaceSetupSubmission[K]
+  ) {
+    setWorkspace((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleWorkspaceSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isCreatingWorkspace) {
+      return;
+    }
+
+    if (
+      !workspace.organizationName.trim() ||
+      !workspace.ownerName.trim() ||
+      !workspace.ownerEmail.trim() ||
+      !workspace.projectName.trim() ||
+      !workspace.agentName.trim() ||
+      !workspace.objective.trim()
+    ) {
+      setWorkspaceState({
+        status: "error",
+        message: "Organization, owner, project, agent, and objective are required."
+      });
+      return;
+    }
+
+    setWorkspaceState({ status: "submitting" });
+    try {
+      const response = await createWorkspaceSetup(workspace);
+      setWorkspaceState({ status: "success", workspace: response.workspace });
+    } catch (error) {
+      setWorkspaceState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "We could not create the workspace right now. Please try again."
+      });
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -68,14 +136,116 @@ export function App() {
     <main className="app-shell">
       <section className="product-panel" aria-labelledby="page-title">
         <p className="eyebrow">AdviceConnect MVP</p>
-        <h1 id="page-title">Turn website conversations into qualified leads.</h1>
+        <h1 id="page-title">Build the first AdviceConnect workspace.</h1>
         <p className="lede">
-          Capture a prospect's needs, consent, contact details, and next-step context in one
-          structured intake flow.
+          Start with the SaaS foundation: organization, owner, plan, project, and the first
+          lead-generation agent.
         </p>
+        <div className="phase-list" aria-label="Build phases">
+          <span>Foundation</span>
+          <span>Agent builder</span>
+          <span>Publishing</span>
+          <span>Payload processing</span>
+        </div>
       </section>
 
+      <section className="workspace-column" aria-label="Application setup">
+        <form className="workspace-form" onSubmit={handleWorkspaceSubmit}>
+          <div>
+            <p className="section-kicker">Phase 1</p>
+            <h2>Workspace foundation</h2>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Organization
+              <input
+                required
+                value={workspace.organizationName}
+                onChange={(event) => updateWorkspace("organizationName", event.target.value)}
+                autoComplete="organization"
+              />
+            </label>
+            <label>
+              Website
+              <input
+                value={workspace.website}
+                onChange={(event) => updateWorkspace("website", event.target.value)}
+                autoComplete="url"
+              />
+            </label>
+            <label>
+              Owner name
+              <input
+                required
+                value={workspace.ownerName}
+                onChange={(event) => updateWorkspace("ownerName", event.target.value)}
+                autoComplete="name"
+              />
+            </label>
+            <label>
+              Owner email
+              <input
+                required
+                type="email"
+                value={workspace.ownerEmail}
+                onChange={(event) => updateWorkspace("ownerEmail", event.target.value)}
+                autoComplete="email"
+              />
+            </label>
+            <label>
+              Project
+              <input
+                required
+                value={workspace.projectName}
+                onChange={(event) => updateWorkspace("projectName", event.target.value)}
+              />
+            </label>
+            <label>
+              Lead agent
+              <input
+                required
+                value={workspace.agentName}
+                onChange={(event) => updateWorkspace("agentName", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <label>
+            Agent objective
+            <textarea
+              required
+              rows={4}
+              value={workspace.objective}
+              onChange={(event) => updateWorkspace("objective", event.target.value)}
+            />
+          </label>
+
+          <button type="submit" disabled={isCreatingWorkspace}>
+            {isCreatingWorkspace ? "Creating..." : "Create workspace"}
+          </button>
+
+          {workspaceState.status === "success" ? (
+            <div role="status" className="workspace-summary">
+              <strong>{workspaceState.workspace.organization.name}</strong>
+              <span>Owner: {workspaceState.workspace.owner.email}</span>
+              <span>Plan: {workspaceState.workspace.subscription.planCode}</span>
+              <span>Project: {workspaceState.workspace.project.name}</span>
+              <span>Agent: {workspaceState.workspace.agent.name}</span>
+            </div>
+          ) : null}
+          {workspaceState.status === "error" ? (
+            <p role="alert" className="error">
+              {workspaceState.message}
+            </p>
+          ) : null}
+        </form>
+
       <form className="lead-form" onSubmit={handleSubmit} aria-label="Lead capture form">
+        <div>
+          <p className="section-kicker">Lead preview</p>
+          <h2>Capture a structured lead</h2>
+        </div>
         <div className="form-grid">
           <label>
             First name
@@ -191,6 +361,7 @@ export function App() {
           </p>
         ) : null}
       </form>
+      </section>
     </main>
   );
 }

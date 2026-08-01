@@ -25,6 +25,16 @@ const validLead = {
   ignored: "not stored"
 };
 
+const validWorkspace = {
+  organizationName: "Northstar Advisory",
+  website: "https://northstar.example",
+  ownerName: "Ava Smith",
+  ownerEmail: " AVA@EXAMPLE.COM ",
+  projectName: "Website lead agent",
+  agentName: "Northstar intake",
+  objective: "Capture qualified advisory leads from the website."
+};
+
 function makeHarness(overrides: Partial<AppConfig> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "adviceconnect-test-"));
   const databasePath = join(dir, "test.sqlite");
@@ -104,6 +114,65 @@ describe("backend api", () => {
     const response = await request(harness.app).get("/api/health");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: "ok", service: "adviceconnect-backend" });
+  });
+
+  it("creates the first organization workspace with owner, subscription, project, and agent", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const response = await request(harness.app)
+      .post("/api/foundation/workspaces")
+      .send(validWorkspace);
+
+    expect(response.status).toBe(201);
+    expect(response.body.workspace.organization).toMatchObject({
+      name: "Northstar Advisory",
+      website: "https://northstar.example"
+    });
+    expect(response.body.workspace.owner.email).toBe("ava@example.com");
+    expect(response.body.workspace.membership.role).toBe("owner");
+    expect(response.body.workspace.subscription).toMatchObject({
+      planCode: "lead-starter",
+      status: "trialing"
+    });
+    expect(response.body.workspace.project).toMatchObject({
+      name: "Website lead agent",
+      status: "draft"
+    });
+    expect(response.body.workspace.agent).toMatchObject({
+      name: "Northstar intake",
+      type: "lead-generation",
+      status: "draft"
+    });
+
+    const readResponse = await request(harness.app).get(
+      `/api/foundation/workspaces/${response.body.workspace.organization.id}`
+    );
+    expect(readResponse.status).toBe(200);
+    expect(readResponse.body.workspace.agent.name).toBe("Northstar intake");
+  });
+
+  it("rejects invalid workspace setup payloads with field errors", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const response = await request(harness.app).post("/api/foundation/workspaces").send({
+      organizationName: "",
+      ownerName: "",
+      ownerEmail: "bad-email",
+      projectName: "",
+      agentName: "",
+      objective: ""
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatchObject({
+      code: "VALIDATION_ERROR",
+      message: "Lead submission is invalid."
+    });
+    expect(response.body.error.fields.organizationName).toBeDefined();
+    expect(response.body.error.fields.ownerEmail).toBeDefined();
+    expect(response.body.error.fields.objective).toBeDefined();
   });
 
   it("creates a lead with normalized persisted data and default indicators", async () => {
@@ -254,12 +323,12 @@ describe("backend api", () => {
     expect(response.status).toBe(404);
   });
 
-  it("bootstraps schema version 1 and survives repository re-instantiation", () => {
+  it("bootstraps schema version 2 and survives repository re-instantiation", () => {
     const harness = makeHarness();
     cleanup = harness.cleanup;
     const databasePath = harness.config.databasePath;
 
-    expect(harness.repository.getSchemaVersion()).toBe(1);
+    expect(harness.repository.getSchemaVersion()).toBe(2);
     const created = harness.repository.createLead({
       id: "lead-test-1",
       ...validateLeadPayload(validLead),
@@ -274,7 +343,7 @@ describe("backend api", () => {
 
     harness.repository.close();
     const reopened = new LeadRepository(databasePath);
-    expect(reopened.getSchemaVersion()).toBe(1);
+    expect(reopened.getSchemaVersion()).toBe(2);
     expect(reopened.listLeads()[0].id).toBe("lead-test-1");
     reopened.close();
     cleanup = () => rmSync(join(databasePath, ".."), { recursive: true, force: true });

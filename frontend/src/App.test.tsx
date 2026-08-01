@@ -22,7 +22,7 @@ function mockFetch(response: unknown, ok = true, delayMs = 0) {
 async function fillRequiredFields() {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/first name/i), "Ava");
-  await user.type(screen.getByLabelText(/email/i), "ava@example.com");
+  await user.type(screen.getByLabelText(/^email$/i), "ava@example.com");
   await user.type(screen.getByLabelText(/business challenge/i), "Need more qualified leads");
   await user.click(screen.getByLabelText(/consent/i));
   return user;
@@ -36,10 +36,46 @@ describe("App", () => {
   it("renders required capture fields", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: /turn website conversations/i })).toBeVisible();
+    expect(screen.getByRole("heading", { name: /build the first adviceconnect/i })).toBeVisible();
+    expect(screen.getByLabelText(/organization/i)).toBeRequired();
+    expect(screen.getByLabelText(/owner email/i)).toBeRequired();
     expect(screen.getByLabelText(/first name/i)).toBeRequired();
-    expect(screen.getByLabelText(/email/i)).toBeRequired();
+    expect(screen.getByLabelText(/^email$/i)).toBeRequired();
     expect(screen.getByLabelText(/business challenge/i)).toBeRequired();
+  });
+
+  it("creates a workspace foundation", async () => {
+    const fetchMock = mockFetch({
+      workspace: {
+        organization: { id: "org-1", name: "Northstar Advisory", website: "" },
+        owner: { id: "user-1", fullName: "Ava Smith", email: "ava@example.com" },
+        subscription: {
+          id: "sub-1",
+          planCode: "lead-starter",
+          status: "trialing",
+          currentPeriodEnd: "2026-08-15T00:00:00.000Z"
+        },
+        project: { id: "project-1", name: "Website leads", objective: "Capture leads" },
+        agent: { id: "agent-1", name: "Lead intake", type: "lead-generation", status: "draft" }
+      }
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/organization/i), "Northstar Advisory");
+    await user.type(screen.getByLabelText(/owner name/i), "Ava Smith");
+    await user.type(screen.getByLabelText(/owner email/i), "ava@example.com");
+    await user.type(screen.getByLabelText(/^project$/i), "Website leads");
+    await user.type(screen.getByLabelText(/lead agent/i), "Lead intake");
+    await user.type(screen.getByLabelText(/agent objective/i), "Capture leads");
+    await user.click(screen.getByRole("button", { name: /create workspace/i }));
+
+    expect(await screen.findByText(/northstar advisory/i)).toBeVisible();
+    expect(screen.getByText(/plan: lead-starter/i)).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/foundation/workspaces",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 
   it("prevents invalid submissions before making a request", async () => {
