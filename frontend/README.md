@@ -1,15 +1,15 @@
 # MySaas Frontend
 
+React + Vite frontend for the AdviceConnect lead-capture MVP.
+
 ## Current Host
 
 | Field | Value |
 | --- | --- |
-| VM | `106` / `vm-prd-web-001` |
-| LAN IP | `192.168.0.192` |
-| Backend IP | `10.60.0.10` |
+| VM | Local frontend web VM |
 | Current service | `uipath-local-web.service` |
 | Current app path | `/opt/uipath-local-web` |
-| Public URL | `https://uipath-local-web-canada.canadacentral.cloudapp.azure.com/` |
+| Public route | Azure HTTPS proxy |
 
 The existing app is a hello-world React/Node service. MySaas can replace it or run beside it under a new path/port.
 
@@ -19,6 +19,28 @@ The existing app is a hello-world React/Node service. MySaas can replace it or r
 - Keep direct local VM exposure closed.
 - Provide a `/health` endpoint.
 - Document the service name, port, build command, and deployment directory.
+- Use same-origin `/api` by default.
+- Do not embed private backend VM IPs in browser code.
+
+## Local MVP App
+
+- Lead-capture form for name, email, business challenge, consent, and optional qualification fields.
+- Success, validation, backend-failure, and duplicate-submit handling.
+- Static `/health` file returning `{ "status": "ok", "service": "adviceconnect-frontend" }`.
+
+## Local Commands
+
+```bash
+npm --workspace frontend run build
+npm --workspace frontend test
+npm --workspace frontend run dev
+```
+
+## Environment
+
+See `frontend/.env.example`.
+
+Leave `VITE_API_BASE_URL` empty for same-origin `/api`. Use `VITE_BACKEND_PROXY_TARGET=http://127.0.0.1:4000` for local Vite proxying.
 
 ## Add A New Frontend Service
 
@@ -29,7 +51,7 @@ The existing app is a hello-world React/Node service. MySaas can replace it or r
 
 ```bash
 curl -fsS http://127.0.0.1:3100/health
-curl -fsS http://10.60.0.10:3100/health
+curl -fsS http://<private-web-host>:3100/health
 ```
 
 5. Update Azure nginx to proxy the new path or hostname.

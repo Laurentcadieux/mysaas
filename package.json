@@ -1,0 +1,23 @@
+{
+  "name": "adviceconnect-mysaas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm --workspace backend run build && npm --workspace frontend run build && node scripts/verify-frontend-build.mjs",
+    "test": "npm --workspace backend test -- --run && npm --workspace frontend test -- --run",
+    "e2e": "playwright test; status=$?; rm -rf .e2e; exit $status",
+    "lint": "npm --workspace backend run lint && npm --workspace frontend run lint"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  },
+  "engines": {
+    "node": ">=22.13 <23",
+    "npm": ">=10"
+  }
+}

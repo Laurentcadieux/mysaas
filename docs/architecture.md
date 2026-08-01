@@ -20,16 +20,16 @@ Browser
 
 ## Frontend
 
-The current frontend host is VM `106` at `10.60.0.10`.
+The current frontend host is the dedicated local frontend VM on the private backend network.
 
 For the first MySaas iteration, deploy the SaaS frontend there or create a new frontend VM on:
 
-- `vmbr0` for admin/LAN access.
-- `vmbr60` for private Azure/backend access.
+- the local admin/LAN bridge for management access.
+- the private backend bridge for Azure/backend access.
 
 ## Backend
 
-The current backend host is VM `107` at `10.60.0.20`.
+The current backend host is the dedicated local backend services VM.
 
 Backend services should listen only on private backend IPs and be reachable through:
 
@@ -39,7 +39,7 @@ Backend services should listen only on private backend IPs and be reachable thro
 
 ## Ingress
 
-The Azure DMZ proxy currently terminates HTTPS and proxies to `10.60.0.10:3000`.
+The Azure DMZ proxy currently terminates HTTPS and proxies to the local frontend service over the VPN.
 
 Future options:
 

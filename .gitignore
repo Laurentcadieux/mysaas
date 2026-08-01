@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# OMX runtime state
+.omx/context/
+.omx/state/
+.omx/tmux-hook.json
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+docs/infrastructure-awareness.local.md
+
+# Local app data
+data/
+.e2e/
+**/.e2e/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Build output
+dist/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*

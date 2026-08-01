@@ -2,37 +2,19 @@
 
 ## Baseline Checks
 
-Public HTTPS:
+Keep public repository docs environment-neutral. Exact hostnames, SSH users, key paths, and IP addresses belong in restricted local operations notes.
 
-```bash
-curl -fsS https://uipath-local-web-canada.canadacentral.cloudapp.azure.com/health
-```
+Baseline check categories:
 
-Azure proxy to local frontend over VPN:
-
-```bash
-ssh -i /home/work10/.ssh/openclaw_azure_dmz_ed25519 azureadmin@20.220.251.71 \
-  'curl -fsS http://10.60.0.10:3000/health'
-```
-
-VPN gateway:
-
-```bash
-ssh -i /home/work10/.ssh/openclaw_proxmox_ed25519 ubuntu@192.168.0.185 \
-  'systemctl is-active strongswan-starter.service; systemctl is-active uipath-azure-vpn.service; sudo ipsec statusall'
-```
-
-Frontend service:
-
-```bash
-ssh -i /home/work10/.ssh/openclaw_proxmox_ed25519 ubuntu@192.168.0.192 \
-  'systemctl is-active uipath-local-web.service; curl -fsS http://127.0.0.1:3000/health'
-```
+- Public HTTPS health.
+- Azure proxy to local frontend over VPN.
+- VPN gateway service status.
+- Frontend service health.
 
 ## Add A Public Route
 
-1. Confirm the backend target IP and port.
-2. SSH to the Azure proxy VM.
+1. Confirm the backend target host and port from restricted ops inventory.
+2. SSH to the Azure proxy VM using the approved local access path.
 3. Edit nginx config.
 4. Run:
 
@@ -46,13 +28,7 @@ sudo systemctl reload nginx
 
 ## Add A New VM
 
-Use the detailed guide in the previous project:
-
-```text
-../proxmox/azure-dmz-proxmox-backend-vnet/user-manual/README.md
-```
-
-Then add the new VM to the relevant MySaas README.
+Use the detailed guide from the infrastructure project, then add the new VM to the relevant restricted inventory and summarize its application role here.
 
 ## Project Closure Note
 
@@ -63,3 +39,23 @@ https://github.com/Laurentcadieux/azure-dmz-proxmox-backend-vnet
 ```
 
 MySaas starts from that infrastructure state.
+
+## Local MVP Ports
+
+| Service | Port | Notes |
+| --- | --- | --- |
+| Backend API | `127.0.0.1:4000` | Default local backend |
+| Frontend dev | `127.0.0.1:5173` | Default Vite dev server |
+| E2E backend | `127.0.0.1:4100` | Isolated Playwright backend |
+| E2E frontend | `127.0.0.1:4173` | Isolated Playwright frontend |
+
+## Local Verification
+
+```bash
+npm ci
+npm run build
+npm test
+npm run e2e
+```
+
+The current MVP is local-only. Publishing to the Azure DMZ / Proxmox path requires a separate deployment plan and explicit approval.

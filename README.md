@@ -8,18 +8,14 @@ This project starts with these deployed servers already available:
 
 | Role | Server | Addressing | Purpose |
 | --- | --- | --- | --- |
-| Public Azure entrypoint | `vm-dmz-web-proxy-001` | public `20.220.251.71`, private `10.50.10.4` | HTTPS nginx proxy in Azure DMZ |
-| Local frontend web server | VM `106` / `vm-prd-web-001` | LAN `192.168.0.192`, backend `10.60.0.10` | Current Node.js/React web host |
-| Local backend services server | VM `107` / `vm-prd-backend-services-001` | backend `10.60.0.20` | Private backend service host |
-| Azure-to-local VPN server | VM `108` / `vm-prd-vpn-gateway-001` | LAN `192.168.0.185`, backend gateway `10.60.0.1` | Linux strongSwan VPN gateway |
+| Public Azure entrypoint | Azure DMZ proxy | Public + private Azure addressing | HTTPS nginx proxy in Azure DMZ |
+| Local frontend web server | Proxmox frontend VM | Local + private backend addressing | Current Node.js/React web host |
+| Local backend services server | Proxmox backend VM | Private backend addressing | Private backend service host |
+| Azure-to-local VPN server | Dedicated Linux VPN VM | Local + backend gateway addressing | strongSwan VPN gateway |
 
 Public URL currently routed through this stack:
 
-```text
-https://uipath-local-web-canada.canadacentral.cloudapp.azure.com/
-```
-
-The public DNS and some existing resource names still contain legacy strings. Treat them as live infrastructure names, not product branding for MySaas.
+The public DNS and some existing resource names still contain legacy strings. Treat them as live infrastructure names, not product branding for MySaas. Keep exact operational inventory in restricted local notes.
 
 ## Target Product Direction
 
@@ -38,18 +34,53 @@ See [docs/project-charter.md](docs/project-charter.md) for the full product char
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` | Instructions for future agents working on MySaas |
+| `package.json` | Root npm workspace and verification commands |
+| `e2e/` | Playwright full-stack browser tests |
 | `docs/project-charter.md` | AdviceConnect project charter and MVP scope |
 | `docs/infrastructure-awareness.md` | Deployed Azure/Proxmox facts this project depends on |
 | `docs/architecture.md` | Initial SaaS architecture |
-| `frontend/README.md` | Frontend plan and deployment notes |
-| `backend/README.md` | Backend plan and deployment notes |
+| `frontend/` | React/Vite lead-capture frontend |
+| `backend/` | Express API and SQLite MVP persistence |
 | `ops/README.md` | Operational checks and deployment workflow |
+
+## Current Code Slice
+
+The first working product slice is local-only:
+
+- React lead-capture form in `frontend/`.
+- Express API in `backend/`.
+- SQLite development persistence under `data/`.
+- Playwright E2E tests under `e2e/`.
+
+This pass does not deploy to Azure or Proxmox.
+
+## Local Development
+
+Use Node.js `22.13` or newer within the Node `22.x` line. The backend uses Node's built-in SQLite module.
+
+```bash
+npm ci
+npm run build
+npm test
+npm run e2e
+```
+
+Backend defaults:
+
+- `HOST=127.0.0.1`
+- `PORT=4000`
+- `DATABASE_PATH=./data/adviceconnect.sqlite`
+- `CORS_ORIGIN=http://127.0.0.1:5173`
+- `BODY_LIMIT=64kb`
+- `ENABLE_DEV_LEAD_LIST=false`
+
+Frontend defaults to same-origin `/api`. Use `VITE_BACKEND_PROXY_TARGET` for local Vite proxying. Browser code must not bake in private Proxmox backend IPs.
 
 ## Non-Negotiables
 
 - Do not commit secrets.
 - Do not expose local backend VMs directly to the internet.
 - Keep Azure as the only public edge.
-- Keep backend traffic on `10.60.0.0/24`.
+- Keep backend traffic on the private backend network.
 - Use VM `108` as the Azure-to-local VPN connector unless a planned migration replaces it.
 - Update the docs when adding a frontend route, backend service, VM, DNS name, port, or secret location.

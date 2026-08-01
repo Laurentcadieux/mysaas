@@ -1,0 +1,33 @@
+{
+  "plan": "lead-capture-mvp",
+  "recordedAt": "2026-08-01T00:57:37Z",
+  "status": "approved",
+  "intendedRepository": "https://github.com/Laurentcadieux/mysaas",
+  "workingFolder": "/home/work10/.openclaw/workspace/MySaas",
+  "prdPath": ".omx/plans/prd-lead-capture-mvp.md",
+  "testSpecPath": ".omx/plans/test-spec-lead-capture-mvp.md",
+  "reviews": [
+    {
+      "order": 1,
+      "role": "architect",
+      "sessionId": "019fbace-3991-71f3-bea9-1ff34efd15b3",
+      "verdict": "approve",
+      "status": "clear",
+      "summary": "Architecture approved. Repository root, clean-checkout contract, option rationale, Playwright ownership, and E2E responsibilities are explicit."
+    },
+    {
+      "order": 2,
+      "role": "critic",
+      "sessionId": "019fbacf-7e87-7050-9060-fe6a7a0c818a",
+      "verdict": "approve",
+      "status": "approved",
+      "summary": "Critic approved after confirming pre-mortem, test matrix, runtime/package contract, repository boundary, option scoring, and E2E ownership."
+    }
+  ],
+  "implementationBoundary": {
+    "scope": "local-only frontend and backend code milestone",
+    "noLiveDeployment": true,
+    "noAzureOrProxmoxChanges": true,
+    "requiresSeparateApprovalForPublicDeployment": true
+  }
+}
