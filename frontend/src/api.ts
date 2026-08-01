@@ -68,6 +68,40 @@ export interface WorkspaceSetupResponse {
   };
 }
 
+export type CustomerRegistrationSubmission = Pick<
+  WorkspaceSetupSubmission,
+  "organizationName" | "website" | "ownerName" | "ownerEmail"
+>;
+
+export interface CustomerRegistrationResponse {
+  customer: Pick<WorkspaceSetupResponse["workspace"], "organization" | "owner" | "subscription">;
+}
+
+export interface AgentSetupSubmission {
+  projectName: string;
+  agentName: string;
+  greeting: string;
+  instructions: string;
+  qualificationQuestions: string;
+}
+
+export interface AgentSetupResponse {
+  setup: Pick<WorkspaceSetupResponse["workspace"], "project" | "agent">;
+}
+
+export interface CustomerSummary {
+  organizationId: string;
+  organizationName: string;
+  website: string;
+  ownerName: string;
+  ownerEmail: string;
+  planCode: string;
+  subscriptionStatus: string;
+  projectCount: number;
+  agentCount: number;
+  createdAt: string;
+}
+
 export class ApiError extends Error {
   constructor(message: string) {
     super(message);
@@ -134,4 +168,58 @@ export async function createWorkspaceSetup(
   }
 
   return body as WorkspaceSetupResponse;
+}
+
+export async function registerCustomer(
+  payload: CustomerRegistrationSubmission
+): Promise<CustomerRegistrationResponse> {
+  const response = await fetch(`${configuredBaseUrl}/api/customers/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message =
+      body?.error?.message ?? "We could not register the customer right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body as CustomerRegistrationResponse;
+}
+
+export async function createAgentSetup(
+  organizationId: string,
+  payload: AgentSetupSubmission
+): Promise<AgentSetupResponse> {
+  const response = await fetch(`${configuredBaseUrl}/api/organizations/${organizationId}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message =
+      body?.error?.message ?? "We could not create the agent right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body as AgentSetupResponse;
+}
+
+export async function listCustomers(): Promise<{ customers: CustomerSummary[] }> {
+  const response = await fetch(`${configuredBaseUrl}/api/admin/customers`);
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message =
+      body?.error?.message ?? "We could not load customers right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body as { customers: CustomerSummary[] };
 }

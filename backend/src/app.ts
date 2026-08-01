@@ -2,7 +2,11 @@ import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
 import type { AppConfig } from "./config.js";
 import {
+  createAgentSetupFromInput,
+  createCustomerRegistrationFromInput,
   createWorkspaceSetupFromInput,
+  validateAgentSetupPayload,
+  validateCustomerRegistrationPayload,
   validateWorkspaceSetupPayload
 } from "./foundationContract.js";
 import { createLeadFromInput, LeadValidationError, validateLeadPayload } from "./leadContract.js";
@@ -35,6 +39,32 @@ export function createApp(config: AppConfig, repository: ApplicationStore) {
     const input = validateWorkspaceSetupPayload(req.body);
     const setup = repository.createWorkspaceSetup(createWorkspaceSetupFromInput(input));
     res.status(201).json({ workspace: setup });
+  });
+
+  app.post("/api/customers/register", (req, res) => {
+    const input = validateCustomerRegistrationPayload(req.body);
+    const registration = repository.createCustomerRegistration(
+      createCustomerRegistrationFromInput(input)
+    );
+    res.status(201).json({ customer: registration });
+  });
+
+  app.post("/api/organizations/:organizationId/agents", (req, res, next) => {
+    try {
+      const input = validateAgentSetupPayload(req.params.organizationId, req.body);
+      const setup = repository.createAgentSetup(createAgentSetupFromInput(input));
+      res.status(201).json({ setup });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Organization not found.") {
+        res.status(404).json({ error: { code: "NOT_FOUND", message: "Organization not found." } });
+        return;
+      }
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/customers", (_req, res) => {
+    res.status(200).json({ customers: repository.listCustomerSummaries() });
   });
 
   app.get("/api/foundation/workspaces/:organizationId", (req, res) => {

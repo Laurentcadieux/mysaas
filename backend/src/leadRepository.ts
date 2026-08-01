@@ -1,7 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { WorkspaceSetup } from "./foundationContract.js";
+import type {
+  AgentSetup,
+  CustomerRegistration,
+  CustomerSummary,
+  WorkspaceSetup
+} from "./foundationContract.js";
 import type { Lead } from "./leadContract.js";
 
 export interface LeadStore {
@@ -10,8 +15,11 @@ export interface LeadStore {
 }
 
 export interface ApplicationStore extends LeadStore {
+  createCustomerRegistration(registration: CustomerRegistration): CustomerRegistration;
+  createAgentSetup(setup: AgentSetup): AgentSetup;
   createWorkspaceSetup(setup: WorkspaceSetup): WorkspaceSetup;
   getWorkspaceSetup(organizationId: string): WorkspaceSetup | undefined;
+  listCustomerSummaries(limit?: number): CustomerSummary[];
 }
 
 export class LeadRepository implements ApplicationStore {
@@ -71,78 +79,61 @@ export class LeadRepository implements ApplicationStore {
       .map(rowToLead);
   }
 
+  createCustomerRegistration(registration: CustomerRegistration): CustomerRegistration {
+    this.db.exec("begin");
+    try {
+      this.insertOrganization(registration.organization);
+      this.db
+        .prepare("insert into users (id, full_name, email, created_at) values (?, ?, ?, ?)")
+        .run(
+          registration.owner.id,
+          registration.owner.fullName,
+          registration.owner.email,
+          registration.owner.createdAt
+        );
+      this.insertMembership(registration.membership);
+      this.insertSubscription(registration.subscription);
+      this.db.exec("commit");
+    } catch (error) {
+      this.db.exec("rollback");
+      throw error;
+    }
+
+    return registration;
+  }
+
+  createAgentSetup(setup: AgentSetup): AgentSetup {
+    const organization = this.db
+      .prepare("select id from organizations where id = ?")
+      .get(setup.project.organizationId);
+    if (!organization) {
+      throw new Error("Organization not found.");
+    }
+
+    this.db.exec("begin");
+    try {
+      this.insertProject(setup.project);
+      this.insertAgent(setup.agent);
+      this.db.exec("commit");
+    } catch (error) {
+      this.db.exec("rollback");
+      throw error;
+    }
+
+    return setup;
+  }
+
   createWorkspaceSetup(setup: WorkspaceSetup): WorkspaceSetup {
     this.db.exec("begin");
     try {
-      this.db
-        .prepare("insert into organizations (id, name, website, created_at) values (?, ?, ?, ?)")
-        .run(
-          setup.organization.id,
-          setup.organization.name,
-          setup.organization.website,
-          setup.organization.createdAt
-        );
+      this.insertOrganization(setup.organization);
       this.db
         .prepare("insert into users (id, full_name, email, created_at) values (?, ?, ?, ?)")
         .run(setup.owner.id, setup.owner.fullName, setup.owner.email, setup.owner.createdAt);
-      this.db
-        .prepare(
-          `insert into memberships (
-            id, organization_id, user_id, role, status, created_at
-          ) values (?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          setup.membership.id,
-          setup.membership.organizationId,
-          setup.membership.userId,
-          setup.membership.role,
-          setup.membership.status,
-          setup.membership.createdAt
-        );
-      this.db
-        .prepare(
-          `insert into subscriptions (
-            id, organization_id, plan_code, status, current_period_start,
-            current_period_end, created_at
-          ) values (?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          setup.subscription.id,
-          setup.subscription.organizationId,
-          setup.subscription.planCode,
-          setup.subscription.status,
-          setup.subscription.currentPeriodStart,
-          setup.subscription.currentPeriodEnd,
-          setup.subscription.createdAt
-        );
-      this.db
-        .prepare(
-          "insert into projects (id, organization_id, name, objective, status, created_at) values (?, ?, ?, ?, ?, ?)"
-        )
-        .run(
-          setup.project.id,
-          setup.project.organizationId,
-          setup.project.name,
-          setup.project.objective,
-          setup.project.status,
-          setup.project.createdAt
-        );
-      this.db
-        .prepare(
-          `insert into agents (
-            id, organization_id, project_id, type, name, objective, status, created_at
-          ) values (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          setup.agent.id,
-          setup.agent.organizationId,
-          setup.agent.projectId,
-          setup.agent.type,
-          setup.agent.name,
-          setup.agent.objective,
-          setup.agent.status,
-          setup.agent.createdAt
-        );
+      this.insertMembership(setup.membership);
+      this.insertSubscription(setup.subscription);
+      this.insertProject(setup.project);
+      this.insertAgent(setup.agent);
       this.db.exec("commit");
     } catch (error) {
       this.db.exec("rollback");
@@ -183,6 +174,9 @@ export class LeadRepository implements ApplicationStore {
           agents.type as agent_type,
           agents.name as agent_name,
           agents.objective as agent_objective,
+          agents.greeting as agent_greeting,
+          agents.instructions as agent_instructions,
+          agents.qualification_questions as agent_qualification_questions,
           agents.status as agent_status,
           agents.created_at as agent_created_at
         from organizations
@@ -197,6 +191,34 @@ export class LeadRepository implements ApplicationStore {
       .get(organizationId);
 
     return row ? rowToWorkspaceSetup(row) : undefined;
+  }
+
+  listCustomerSummaries(limit = 100): CustomerSummary[] {
+    return this.db
+      .prepare(
+        `select
+          organizations.id as organization_id,
+          organizations.name as organization_name,
+          organizations.website as organization_website,
+          organizations.created_at as organization_created_at,
+          users.full_name as owner_full_name,
+          users.email as owner_email,
+          subscriptions.plan_code as subscription_plan_code,
+          subscriptions.status as subscription_status,
+          count(distinct projects.id) as project_count,
+          count(distinct agents.id) as agent_count
+        from organizations
+        join memberships on memberships.organization_id = organizations.id
+        join users on users.id = memberships.user_id
+        join subscriptions on subscriptions.organization_id = organizations.id
+        left join projects on projects.organization_id = organizations.id
+        left join agents on agents.organization_id = organizations.id
+        group by organizations.id
+        order by organizations.created_at desc
+        limit ?`
+      )
+      .all(limit)
+      .map(rowToCustomerSummary);
   }
 
   getSchemaVersion(): number {
@@ -318,6 +340,98 @@ export class LeadRepository implements ApplicationStore {
         where id = 1;
       `);
     }
+
+    if (this.getSchemaVersion() < 3) {
+      this.db.exec(`
+        alter table agents add column greeting text not null default '';
+        alter table agents add column instructions text not null default '';
+        alter table agents add column qualification_questions text not null default '';
+
+        update schema_meta
+        set version = 3, updated_at = datetime('now')
+        where id = 1;
+      `);
+    }
+  }
+
+  private insertOrganization(organization: WorkspaceSetup["organization"]): void {
+    this.db
+      .prepare("insert into organizations (id, name, website, created_at) values (?, ?, ?, ?)")
+      .run(organization.id, organization.name, organization.website, organization.createdAt);
+  }
+
+  private insertMembership(membership: WorkspaceSetup["membership"]): void {
+    this.db
+      .prepare(
+        `insert into memberships (
+          id, organization_id, user_id, role, status, created_at
+        ) values (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        membership.id,
+        membership.organizationId,
+        membership.userId,
+        membership.role,
+        membership.status,
+        membership.createdAt
+      );
+  }
+
+  private insertSubscription(subscription: WorkspaceSetup["subscription"]): void {
+    this.db
+      .prepare(
+        `insert into subscriptions (
+          id, organization_id, plan_code, status, current_period_start,
+          current_period_end, created_at
+        ) values (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        subscription.id,
+        subscription.organizationId,
+        subscription.planCode,
+        subscription.status,
+        subscription.currentPeriodStart,
+        subscription.currentPeriodEnd,
+        subscription.createdAt
+      );
+  }
+
+  private insertProject(project: WorkspaceSetup["project"]): void {
+    this.db
+      .prepare(
+        "insert into projects (id, organization_id, name, objective, status, created_at) values (?, ?, ?, ?, ?, ?)"
+      )
+      .run(
+        project.id,
+        project.organizationId,
+        project.name,
+        project.objective,
+        project.status,
+        project.createdAt
+      );
+  }
+
+  private insertAgent(agent: WorkspaceSetup["agent"]): void {
+    this.db
+      .prepare(
+        `insert into agents (
+          id, organization_id, project_id, type, name, objective, greeting,
+          instructions, qualification_questions, status, created_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        agent.id,
+        agent.organizationId,
+        agent.projectId,
+        agent.type,
+        agent.name,
+        agent.objective,
+        agent.greeting,
+        agent.instructions,
+        agent.qualificationQuestions,
+        agent.status,
+        agent.createdAt
+      );
   }
 }
 
@@ -395,8 +509,26 @@ function rowToWorkspaceSetup(row: Record<string, unknown>): WorkspaceSetup {
       type: String(row.agent_type) as "lead-generation",
       name: String(row.agent_name),
       objective: String(row.agent_objective),
+      greeting: String(row.agent_greeting),
+      instructions: String(row.agent_instructions),
+      qualificationQuestions: String(row.agent_qualification_questions),
       status: String(row.agent_status) as "draft",
       createdAt: String(row.agent_created_at)
     }
+  };
+}
+
+function rowToCustomerSummary(row: Record<string, unknown>): CustomerSummary {
+  return {
+    organizationId: String(row.organization_id),
+    organizationName: String(row.organization_name),
+    website: String(row.organization_website),
+    ownerName: String(row.owner_full_name),
+    ownerEmail: String(row.owner_email),
+    planCode: String(row.subscription_plan_code),
+    subscriptionStatus: String(row.subscription_status),
+    projectCount: Number(row.project_count ?? 0),
+    agentCount: Number(row.agent_count ?? 0),
+    createdAt: String(row.organization_created_at)
   };
 }

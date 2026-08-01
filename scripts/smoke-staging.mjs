@@ -10,7 +10,9 @@ const leadEmail = `smoke+${Date.now()}@example.invalid`;
 
 await checkHealth(`${root}/health`, "frontend");
 await checkHealth(`${root}/api/health`, "backend");
-await createWorkspace(`${root}/api/foundation/workspaces`, leadEmail);
+const organizationId = await registerCustomer(`${root}/api/customers/register`, leadEmail);
+await createAgent(`${root}/api/organizations/${organizationId}/agents`);
+await checkManagement(`${root}/api/admin/customers`, organizationId);
 await submitLead(`${root}/api/leads`, leadEmail);
 
 console.info(`Staging smoke checks passed for ${root}`);
@@ -71,7 +73,7 @@ async function submitLead(url, email) {
   }
 }
 
-async function createWorkspace(url, email) {
+async function registerCustomer(url, email) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -82,20 +84,53 @@ async function createWorkspace(url, email) {
       organizationName: "MySaas Smoke Test",
       website: "https://example.invalid",
       ownerName: "Staging Smoke",
-      ownerEmail: email,
-      projectName: "Smoke project",
-      agentName: "Smoke lead agent",
-      objective: "Validate foundation workspace creation after deployment."
+      ownerEmail: email
     })
   });
 
   if (response.status !== 201) {
     const body = await response.text();
-    throw new Error(`workspace creation failed: ${response.status} ${response.statusText}\n${body}`);
+    throw new Error(`customer registration failed: ${response.status} ${response.statusText}\n${body}`);
   }
 
   const payload = await response.json();
-  if (!payload.workspace?.organization?.id || !payload.workspace?.agent?.id) {
-    throw new Error("workspace response did not include the expected organization and agent");
+  if (!payload.customer?.organization?.id) {
+    throw new Error("registration response did not include the expected organization");
+  }
+  return payload.customer.organization.id;
+}
+
+async function createAgent(url) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({
+      projectName: "Smoke project",
+      agentName: "Smoke lead agent",
+      greeting: "Hi, I can help route your request.",
+      instructions: "Ask for the visitor need, urgency, and best follow-up path.",
+      qualificationQuestions: "What do you need?\nWhen do you need it?\nHow should the team follow up?"
+    })
+  });
+
+  if (response.status !== 201) {
+    const body = await response.text();
+    throw new Error(`agent creation failed: ${response.status} ${response.statusText}\n${body}`);
+  }
+}
+
+async function checkManagement(url, organizationId) {
+  const response = await fetch(url, { headers: { accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`management check failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json();
+  const customer = payload.customers?.find((item) => item.organizationId === organizationId);
+  if (!customer || customer.agentCount < 1) {
+    throw new Error("management check did not include the registered customer and agent");
   }
 }

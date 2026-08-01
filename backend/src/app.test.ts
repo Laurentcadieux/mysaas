@@ -152,6 +152,49 @@ describe("backend api", () => {
     expect(readResponse.body.workspace.agent.name).toBe("Northstar intake");
   });
 
+  it("registers a customer, creates a conversational lead agent, and lists it for management", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const registrationResponse = await request(harness.app).post("/api/customers/register").send({
+      organizationName: "Northstar Advisory",
+      website: "https://northstar.example",
+      ownerName: "Ava Smith",
+      ownerEmail: "AVA@EXAMPLE.COM"
+    });
+
+    expect(registrationResponse.status).toBe(201);
+    expect(registrationResponse.body.customer.organization.name).toBe("Northstar Advisory");
+    expect(registrationResponse.body.customer.owner.email).toBe("ava@example.com");
+
+    const organizationId = registrationResponse.body.customer.organization.id;
+    const agentResponse = await request(harness.app)
+      .post(`/api/organizations/${organizationId}/agents`)
+      .send({
+        projectName: "Website lead generation",
+        agentName: "Northstar concierge",
+        greeting: "Hi, I can help route your request.",
+        instructions: "Ask for the visitor need, urgency, and preferred next step.",
+        qualificationQuestions: "What do you need?\nWhen do you need it?"
+      });
+
+    expect(agentResponse.status).toBe(201);
+    expect(agentResponse.body.setup.agent).toMatchObject({
+      name: "Northstar concierge",
+      type: "lead-generation",
+      greeting: "Hi, I can help route your request."
+    });
+
+    const managementResponse = await request(harness.app).get("/api/admin/customers");
+    expect(managementResponse.status).toBe(200);
+    expect(managementResponse.body.customers[0]).toMatchObject({
+      organizationName: "Northstar Advisory",
+      ownerEmail: "ava@example.com",
+      agentCount: 1,
+      projectCount: 1
+    });
+  });
+
   it("rejects invalid workspace setup payloads with field errors", async () => {
     const harness = makeHarness();
     cleanup = harness.cleanup;
@@ -323,12 +366,12 @@ describe("backend api", () => {
     expect(response.status).toBe(404);
   });
 
-  it("bootstraps schema version 2 and survives repository re-instantiation", () => {
+  it("bootstraps schema version 3 and survives repository re-instantiation", () => {
     const harness = makeHarness();
     cleanup = harness.cleanup;
     const databasePath = harness.config.databasePath;
 
-    expect(harness.repository.getSchemaVersion()).toBe(2);
+    expect(harness.repository.getSchemaVersion()).toBe(3);
     const created = harness.repository.createLead({
       id: "lead-test-1",
       ...validateLeadPayload(validLead),
@@ -343,7 +386,7 @@ describe("backend api", () => {
 
     harness.repository.close();
     const reopened = new LeadRepository(databasePath);
-    expect(reopened.getSchemaVersion()).toBe(2);
+    expect(reopened.getSchemaVersion()).toBe(3);
     expect(reopened.listLeads()[0].id).toBe("lead-test-1");
     reopened.close();
     cleanup = () => rmSync(join(databasePath, ".."), { recursive: true, force: true });

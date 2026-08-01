@@ -3,18 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 
-function mockFetch(response: unknown, ok = true, delayMs = 0) {
-  const fetchMock = vi.fn(
-    () =>
-      new Promise<Response>((resolve) => {
-        setTimeout(() => {
-          resolve({
-            ok,
-            json: async () => response
-          } as Response);
-        }, delayMs);
-      })
-  );
+function response(body: unknown, ok = true): Response {
+  return {
+    ok,
+    json: async () => body
+  } as Response;
+}
+
+function mockFetch(responseBody: unknown, ok = true, delayMs = 0) {
+  const fetchMock = vi.fn((url: string) => {
+    const body = url === "/api/admin/customers" ? { customers: [] } : responseBody;
+    return new Promise<Response>((resolve) => {
+      setTimeout(() => {
+        resolve(response(body, ok));
+      }, delayMs);
+    });
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -31,61 +35,95 @@ async function fillRequiredFields() {
 describe("App", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn(async () => response({ customers: [] })));
   });
 
   it("renders required capture fields", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: /launch a website agent/i })).toBeVisible();
+    expect(screen.getByRole("heading", { name: /register customers/i })).toBeVisible();
     expect(screen.getByLabelText(/organization/i)).toBeRequired();
     expect(screen.getByLabelText(/owner email/i)).toBeRequired();
+    expect(screen.getByLabelText(/greeting/i)).toBeRequired();
     expect(screen.getByLabelText(/first name/i)).toBeRequired();
     expect(screen.getByLabelText(/^email$/i)).toBeRequired();
     expect(screen.getByLabelText(/business challenge/i)).toBeRequired();
   });
 
-  it("creates a workspace foundation", async () => {
-    const fetchMock = mockFetch({
-      workspace: {
-        organization: { id: "org-1", name: "Northstar Advisory", website: "" },
-        owner: { id: "user-1", fullName: "Ava Smith", email: "ava@example.com" },
-        subscription: {
-          id: "sub-1",
-          planCode: "lead-starter",
-          status: "trialing",
-          currentPeriodEnd: "2026-08-15T00:00:00.000Z"
-        },
-        project: { id: "project-1", name: "Website leads", objective: "Capture leads" },
-        agent: { id: "agent-1", name: "Lead intake", type: "lead-generation", status: "draft" }
+  it("registers a customer and creates the first conversational lead agent", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/customers/register") {
+        return response({
+          customer: {
+            organization: { id: "org-1", name: "Northstar Advisory", website: "" },
+            owner: { id: "user-1", fullName: "Ava Smith", email: "ava@example.com" },
+            subscription: {
+              id: "sub-1",
+              planCode: "lead-starter",
+              status: "trialing",
+              currentPeriodEnd: "2026-08-15T00:00:00.000Z"
+            }
+          }
+        });
       }
+      if (url === "/api/organizations/org-1/agents") {
+        return response({
+          setup: {
+            project: { id: "project-1", name: "Website leads", objective: "Capture leads" },
+            agent: { id: "agent-1", name: "Lead intake", type: "lead-generation", status: "draft" }
+          }
+        });
+      }
+      return response({
+        customers: [
+          {
+            organizationId: "org-1",
+            organizationName: "Northstar Advisory",
+            ownerEmail: "ava@example.com",
+            planCode: "lead-starter",
+            agentCount: 1
+          }
+        ]
+      });
     });
+    vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     render(<App />);
 
     await user.type(screen.getByLabelText(/organization/i), "Northstar Advisory");
     await user.type(screen.getByLabelText(/owner name/i), "Ava Smith");
     await user.type(screen.getByLabelText(/owner email/i), "ava@example.com");
-    await user.type(screen.getByLabelText(/^project$/i), "Website leads");
-    await user.type(screen.getByLabelText(/lead agent/i), "Lead intake");
-    await user.type(screen.getByLabelText(/agent objective/i), "Capture leads");
-    await user.click(screen.getByRole("button", { name: /create workspace/i }));
+    await user.click(screen.getByRole("button", { name: /register customer/i }));
 
-    expect(await screen.findByText(/northstar advisory/i)).toBeVisible();
-    expect(screen.getByText(/plan: lead-starter/i)).toBeVisible();
+    expect(await screen.findByText(/ready for conversational lead agent setup/i)).toBeVisible();
+
+    await user.type(screen.getByLabelText(/^project$/i), "Website leads");
+    await user.type(screen.getByLabelText(/^lead agent$/i), "Lead intake");
+    await user.click(screen.getByRole("button", { name: /create lead agent/i }));
+
+    expect(await screen.findByText(/agent created: lead intake/i)).toBeVisible();
+    expect(screen.getAllByText(/northstar advisory/i)[0]).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/foundation/workspaces",
+      "/api/customers/register",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/organizations/org-1/agents",
       expect.objectContaining({ method: "POST" })
     );
   });
 
   it("prevents invalid submissions before making a request", async () => {
-    const fetchMock = mockFetch({});
+    const fetchMock = vi.mocked(fetch);
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: /submit lead/i }));
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/leads",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 
   it("submits once and shows success", async () => {
@@ -97,7 +135,6 @@ describe("App", () => {
 
     expect(await screen.findByText(/lead captured/i)).toBeVisible();
     expect(screen.getByText(/lead-123/i)).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/leads",
       expect.objectContaining({ method: "POST" })
@@ -125,6 +162,9 @@ describe("App", () => {
 
     await user.dblClick(button);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(
+      () =>
+        expect(fetchMock.mock.calls.filter(([url]) => url === "/api/leads")).toHaveLength(1)
+    );
   });
 });

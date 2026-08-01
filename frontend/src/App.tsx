@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  createWorkspaceSetup,
+  createAgentSetup,
+  listCustomers,
+  registerCustomer,
   submitLead,
-  type LeadSubmission,
-  type WorkspaceSetupResponse,
-  type WorkspaceSetupSubmission
+  type AgentSetupSubmission,
+  type CustomerRegistrationResponse,
+  type CustomerRegistrationSubmission,
+  type CustomerSummary,
+  type LeadSubmission
 } from "./api.js";
 
 type SubmitState =
@@ -13,10 +17,16 @@ type SubmitState =
   | { status: "success"; leadId: string }
   | { status: "error"; message: string };
 
-type WorkspaceState =
+type RegistrationState =
   | { status: "idle" }
   | { status: "submitting" }
-  | { status: "success"; workspace: WorkspaceSetupResponse["workspace"] }
+  | { status: "success"; customer: CustomerRegistrationResponse["customer"] }
+  | { status: "error"; message: string };
+
+type AgentState =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "success"; agentName: string }
   | { status: "error"; message: string };
 
 const initialLead: LeadSubmission = {
@@ -34,95 +44,172 @@ const initialLead: LeadSubmission = {
   source: "website-form"
 };
 
-const initialWorkspace: WorkspaceSetupSubmission = {
+const initialRegistration: CustomerRegistrationSubmission = {
   organizationName: "",
   website: "",
   ownerName: "",
-  ownerEmail: "",
+  ownerEmail: ""
+};
+
+const initialAgent: AgentSetupSubmission = {
   projectName: "",
   agentName: "",
-  objective: ""
+  greeting: "Hi, I can help understand your needs and route your request to the right person.",
+  instructions:
+    "Ask concise questions, capture contact details, identify urgency and purchase intent, then summarize the recommended next step.",
+  qualificationQuestions:
+    "What service are you looking for?\nWhat problem are you trying to solve?\nWhat timeline are you working with?\nWhat budget range should the team understand?"
 };
 
 export function App() {
   const [lead, setLead] = useState<LeadSubmission>(initialLead);
-  const [state, setState] = useState<SubmitState>({ status: "idle" });
-  const [workspace, setWorkspace] = useState<WorkspaceSetupSubmission>(initialWorkspace);
-  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
+  const [leadState, setLeadState] = useState<SubmitState>({ status: "idle" });
+  const [registration, setRegistration] =
+    useState<CustomerRegistrationSubmission>(initialRegistration);
+  const [registrationState, setRegistrationState] = useState<RegistrationState>({
+    status: "idle"
+  });
+  const [agent, setAgent] = useState<AgentSetupSubmission>(initialAgent);
+  const [agentState, setAgentState] = useState<AgentState>({ status: "idle" });
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [agentOrganizationId, setAgentOrganizationId] = useState("");
 
-  const isSubmitting = state.status === "submitting";
-  const isCreatingWorkspace = workspaceState.status === "submitting";
+  const selectedOrganizationId =
+    registrationState.status === "success"
+      ? registrationState.customer.organization.id
+      : agentOrganizationId || customers[0]?.organizationId;
+
+  useEffect(() => {
+    void refreshCustomers();
+  }, []);
+
+  useEffect(() => {
+    if (!agentOrganizationId && customers[0]) {
+      setAgentOrganizationId(customers[0].organizationId);
+    }
+  }, [agentOrganizationId, customers]);
 
   function updateLead<K extends keyof LeadSubmission>(field: K, value: LeadSubmission[K]) {
     setLead((current) => ({ ...current, [field]: value }));
   }
 
-  function updateWorkspace<K extends keyof WorkspaceSetupSubmission>(
+  function updateRegistration<K extends keyof CustomerRegistrationSubmission>(
     field: K,
-    value: WorkspaceSetupSubmission[K]
+    value: CustomerRegistrationSubmission[K]
   ) {
-    setWorkspace((current) => ({ ...current, [field]: value }));
+    setRegistration((current) => ({ ...current, [field]: value }));
   }
 
-  async function handleWorkspaceSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function updateAgent<K extends keyof AgentSetupSubmission>(field: K, value: AgentSetupSubmission[K]) {
+    setAgent((current) => ({ ...current, [field]: value }));
+  }
+
+  async function refreshCustomers() {
+    try {
+      const response = await listCustomers();
+      setCustomers(response.customers);
+    } catch {
+      setCustomers([]);
+    }
+  }
+
+  async function handleRegistrationSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isCreatingWorkspace) {
+    if (registrationState.status === "submitting") {
       return;
     }
 
     if (
-      !workspace.organizationName.trim() ||
-      !workspace.ownerName.trim() ||
-      !workspace.ownerEmail.trim() ||
-      !workspace.projectName.trim() ||
-      !workspace.agentName.trim() ||
-      !workspace.objective.trim()
+      !registration.organizationName.trim() ||
+      !registration.ownerName.trim() ||
+      !registration.ownerEmail.trim()
     ) {
-      setWorkspaceState({
+      setRegistrationState({
         status: "error",
-        message: "Organization, owner, project, agent, and objective are required."
+        message: "Organization, owner name, and owner email are required."
       });
       return;
     }
 
-    setWorkspaceState({ status: "submitting" });
+    setRegistrationState({ status: "submitting" });
     try {
-      const response = await createWorkspaceSetup(workspace);
-      setWorkspaceState({ status: "success", workspace: response.workspace });
+      const response = await registerCustomer(registration);
+      setRegistrationState({ status: "success", customer: response.customer });
+      setAgentOrganizationId(response.customer.organization.id);
+      await refreshCustomers();
     } catch (error) {
-      setWorkspaceState({
+      setRegistrationState({
         status: "error",
         message:
           error instanceof Error
             ? error.message
-            : "We could not create the workspace right now. Please try again."
+            : "We could not register the customer right now. Please try again."
       });
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleAgentSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting) {
+    if (agentState.status === "submitting" || !selectedOrganizationId) {
+      return;
+    }
+
+    if (
+      !agent.projectName.trim() ||
+      !agent.agentName.trim() ||
+      !agent.greeting.trim() ||
+      !agent.instructions.trim() ||
+      !agent.qualificationQuestions.trim()
+    ) {
+      setAgentState({
+        status: "error",
+        message: "Project, agent name, greeting, instructions, and questions are required."
+      });
+      return;
+    }
+
+    setAgentState({ status: "submitting" });
+    try {
+      const response = await createAgentSetup(selectedOrganizationId, agent);
+      setAgentState({ status: "success", agentName: response.setup.agent.name });
+      await refreshCustomers();
+    } catch (error) {
+      setAgentState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "We could not create the agent right now. Please try again."
+      });
+    }
+  }
+
+  async function handleLeadSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (leadState.status === "submitting") {
       return;
     }
 
     if (!lead.firstName.trim() || !lead.email.trim() || !lead.businessChallenge.trim()) {
-      setState({ status: "error", message: "Name, email, and business challenge are required." });
+      setLeadState({
+        status: "error",
+        message: "Name, email, and business challenge are required."
+      });
       return;
     }
 
     if (!lead.consentToFollowUp) {
-      setState({ status: "error", message: "Consent is required before we can follow up." });
+      setLeadState({ status: "error", message: "Consent is required before we can follow up." });
       return;
     }
 
-    setState({ status: "submitting" });
+    setLeadState({ status: "submitting" });
     try {
       const response = await submitLead(lead);
-      setState({ status: "success", leadId: response.lead.id });
+      setLeadState({ status: "success", leadId: response.lead.id });
       setLead(initialLead);
     } catch (error) {
-      setState({
+      setLeadState({
         status: "error",
         message:
           error instanceof Error
@@ -140,60 +227,53 @@ export function App() {
           <span>Private SaaS pilot</span>
         </nav>
         <p className="eyebrow">Lead agents for service businesses</p>
-        <h1 id="page-title">Launch a website agent that turns conversations into qualified leads.</h1>
+        <h1 id="page-title">Register customers and launch their first conversational lead agent.</h1>
         <p className="lede">
-          Create the workspace, publish the first lead-generation agent, and route every
-          conversation into structured sales data.
+          Run AdviceConnect as a business: onboard companies, configure their first lead agent,
+          and see which customers are active from the management view.
         </p>
         <div className="hero-actions" aria-label="Primary actions">
-          <a href="#workspace-setup">Launch workspace</a>
-          <a href="#lead-preview">Preview lead flow</a>
+          <a href="#customer-registration">Register customer</a>
+          <a href="#management">View management</a>
         </div>
         <div className="metric-strip" aria-label="Product proof points">
           <span>
-            <strong>14-day</strong>
-            pilot-ready trial
+            <strong>Step 1</strong>
+            customer account
           </span>
           <span>
-            <strong>Fixed</strong>
-            monthly plans
+            <strong>Step 2</strong>
+            lead agent setup
           </span>
           <span>
-            <strong>Private</strong>
-            backend routing
+            <strong>Step 3</strong>
+            management visibility
           </span>
-        </div>
-        <div className="phase-list" aria-label="Build phases">
-          <span>Foundation</span>
-          <span>Agent builder</span>
-          <span>Publishing</span>
-          <span>Payload processing</span>
         </div>
         <div className="conversation-preview" aria-label="Conversation preview">
-          <p>Visitor asks about services, budget, and timing.</p>
-          <p>AdviceConnect captures urgency, intent, contact details, and next action.</p>
-          <p>Sales team gets a structured lead instead of a raw chat transcript.</p>
+          <p>New customer registers their company and owner account.</p>
+          <p>They configure a conversational agent with greeting, instructions, and questions.</p>
+          <p>You see the company, owner, plan, and agent count in the management panel.</p>
         </div>
       </section>
 
       <section className="workspace-column" aria-label="Application setup">
         <div className="launch-header">
-          <p className="section-kicker">Go to market setup</p>
-          <h2>Turn the first customer into a working workspace.</h2>
+          <p className="section-kicker">Go to market operation</p>
+          <h2>Onboard a customer, create their first agent, then manage the account.</h2>
           <p>
-            This creates the owner, organization, starter subscription, launch project, and first
-            lead agent in one path.
+            This is the first business-running flow for AdviceConnect, not only a lead form.
           </p>
         </div>
 
         <form
-          id="workspace-setup"
+          id="customer-registration"
           className="workspace-form"
-          onSubmit={handleWorkspaceSubmit}
+          onSubmit={handleRegistrationSubmit}
         >
           <div>
-            <p className="section-kicker">Step 1</p>
-            <h3>Workspace foundation</h3>
+            <p className="section-kicker">Register</p>
+            <h3>New customer account</h3>
           </div>
 
           <div className="form-grid">
@@ -201,16 +281,16 @@ export function App() {
               Organization
               <input
                 required
-                value={workspace.organizationName}
-                onChange={(event) => updateWorkspace("organizationName", event.target.value)}
+                value={registration.organizationName}
+                onChange={(event) => updateRegistration("organizationName", event.target.value)}
                 autoComplete="organization"
               />
             </label>
             <label>
               Website
               <input
-                value={workspace.website}
-                onChange={(event) => updateWorkspace("website", event.target.value)}
+                value={registration.website}
+                onChange={(event) => updateRegistration("website", event.target.value)}
                 autoComplete="url"
               />
             </label>
@@ -218,8 +298,8 @@ export function App() {
               Owner name
               <input
                 required
-                value={workspace.ownerName}
-                onChange={(event) => updateWorkspace("ownerName", event.target.value)}
+                value={registration.ownerName}
+                onChange={(event) => updateRegistration("ownerName", event.target.value)}
                 autoComplete="name"
               />
             </label>
@@ -228,184 +308,275 @@ export function App() {
               <input
                 required
                 type="email"
-                value={workspace.ownerEmail}
-                onChange={(event) => updateWorkspace("ownerEmail", event.target.value)}
+                value={registration.ownerEmail}
+                onChange={(event) => updateRegistration("ownerEmail", event.target.value)}
                 autoComplete="email"
               />
+            </label>
+          </div>
+
+          <button type="submit" disabled={registrationState.status === "submitting"}>
+            {registrationState.status === "submitting" ? "Registering..." : "Register customer"}
+          </button>
+
+          {registrationState.status === "success" ? (
+            <div role="status" className="workspace-summary">
+              <strong>{registrationState.customer.organization.name}</strong>
+              <span>Owner: {registrationState.customer.owner.email}</span>
+              <span>Plan: {registrationState.customer.subscription.planCode}</span>
+              <span>Ready for conversational lead agent setup.</span>
+            </div>
+          ) : null}
+          {registrationState.status === "error" ? (
+            <p role="alert" className="error">
+              {registrationState.message}
+            </p>
+          ) : null}
+        </form>
+
+        <form className="workspace-form" onSubmit={handleAgentSubmit}>
+          <div>
+            <p className="section-kicker">Agent builder</p>
+            <h3>First conversational lead agent</h3>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Customer
+              <select
+                value={selectedOrganizationId ?? ""}
+                onChange={(event) => setAgentOrganizationId(event.target.value)}
+                disabled={customers.length === 0 && registrationState.status !== "success"}
+              >
+                {registrationState.status === "success" ? (
+                  <option value={registrationState.customer.organization.id}>
+                    {registrationState.customer.organization.name}
+                  </option>
+                ) : null}
+                {customers
+                  .filter(
+                    (customer) =>
+                      registrationState.status !== "success" ||
+                      customer.organizationId !== registrationState.customer.organization.id
+                  )
+                  .map((customer) => (
+                    <option key={customer.organizationId} value={customer.organizationId}>
+                      {customer.organizationName}
+                    </option>
+                  ))}
+              </select>
             </label>
             <label>
               Project
               <input
                 required
-                value={workspace.projectName}
-                onChange={(event) => updateWorkspace("projectName", event.target.value)}
+                value={agent.projectName}
+                onChange={(event) => updateAgent("projectName", event.target.value)}
               />
             </label>
             <label>
               Lead agent
               <input
                 required
-                value={workspace.agentName}
-                onChange={(event) => updateWorkspace("agentName", event.target.value)}
+                value={agent.agentName}
+                onChange={(event) => updateAgent("agentName", event.target.value)}
               />
             </label>
           </div>
 
           <label>
-            Agent objective
+            Greeting
+            <textarea
+              required
+              rows={3}
+              value={agent.greeting}
+              onChange={(event) => updateAgent("greeting", event.target.value)}
+            />
+          </label>
+          <label>
+            Conversational instructions
             <textarea
               required
               rows={4}
-              value={workspace.objective}
-              onChange={(event) => updateWorkspace("objective", event.target.value)}
+              value={agent.instructions}
+              onChange={(event) => updateAgent("instructions", event.target.value)}
+            />
+          </label>
+          <label>
+            Qualification questions
+            <textarea
+              required
+              rows={5}
+              value={agent.qualificationQuestions}
+              onChange={(event) => updateAgent("qualificationQuestions", event.target.value)}
             />
           </label>
 
-          <button type="submit" disabled={isCreatingWorkspace}>
-            {isCreatingWorkspace ? "Creating..." : "Create workspace"}
+          <button type="submit" disabled={agentState.status === "submitting" || !selectedOrganizationId}>
+            {agentState.status === "submitting" ? "Creating..." : "Create lead agent"}
           </button>
 
-          {workspaceState.status === "success" ? (
-            <div role="status" className="workspace-summary">
-              <strong>{workspaceState.workspace.organization.name}</strong>
-              <span>Owner: {workspaceState.workspace.owner.email}</span>
-              <span>Plan: {workspaceState.workspace.subscription.planCode}</span>
-              <span>Project: {workspaceState.workspace.project.name}</span>
-              <span>Agent: {workspaceState.workspace.agent.name}</span>
-            </div>
+          {agentState.status === "success" ? (
+            <p role="status" className="success">
+              Agent created: {agentState.agentName}.
+            </p>
           ) : null}
-          {workspaceState.status === "error" ? (
+          {agentState.status === "error" ? (
             <p role="alert" className="error">
-              {workspaceState.message}
+              {agentState.message}
             </p>
           ) : null}
         </form>
 
-      <form
-        id="lead-preview"
-        className="lead-form"
-        onSubmit={handleSubmit}
-        aria-label="Lead capture form"
-      >
-        <div>
-          <p className="section-kicker">Step 2</p>
-          <h3>Preview the structured lead intake</h3>
-        </div>
-        <div className="form-grid">
+        <section id="management" className="management-panel" aria-labelledby="management-title">
+          <div>
+            <p className="section-kicker">Management</p>
+            <h3 id="management-title">Registered companies</h3>
+          </div>
+          <div className="customer-list">
+            {customers.length === 0 ? (
+              <p>No customers registered yet.</p>
+            ) : (
+              customers.map((customer) => (
+                <article key={customer.organizationId}>
+                  <strong>{customer.organizationName}</strong>
+                  <span>{customer.ownerEmail}</span>
+                  <span>{customer.planCode}</span>
+                  <span>{customer.agentCount} agents</span>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <form
+          id="lead-preview"
+          className="lead-form"
+          onSubmit={handleLeadSubmit}
+          aria-label="Lead capture form"
+        >
+          <div>
+            <p className="section-kicker">Lead preview</p>
+            <h3>Preview the structured lead intake</h3>
+          </div>
+          <div className="form-grid">
+            <label>
+              First name
+              <input
+                required
+                value={lead.firstName}
+                onChange={(event) => updateLead("firstName", event.target.value)}
+                autoComplete="given-name"
+              />
+            </label>
+            <label>
+              Last name
+              <input
+                value={lead.lastName}
+                onChange={(event) => updateLead("lastName", event.target.value)}
+                autoComplete="family-name"
+              />
+            </label>
+            <label>
+              Email
+              <input
+                required
+                type="email"
+                value={lead.email}
+                onChange={(event) => updateLead("email", event.target.value)}
+                autoComplete="email"
+              />
+            </label>
+            <label>
+              Phone
+              <input
+                value={lead.phone}
+                onChange={(event) => updateLead("phone", event.target.value)}
+                autoComplete="tel"
+              />
+            </label>
+            <label>
+              Company
+              <input
+                value={lead.company}
+                onChange={(event) => updateLead("company", event.target.value)}
+                autoComplete="organization"
+              />
+            </label>
+            <label>
+              Service interest
+              <input
+                value={lead.serviceInterest}
+                onChange={(event) => updateLead("serviceInterest", event.target.value)}
+              />
+            </label>
+            <label>
+              Budget
+              <input
+                value={lead.budget}
+                onChange={(event) => updateLead("budget", event.target.value)}
+              />
+            </label>
+            <label>
+              Timeline
+              <input
+                value={lead.timeline}
+                onChange={(event) => updateLead("timeline", event.target.value)}
+              />
+            </label>
+          </div>
+
           <label>
-            First name
-            <input
+            Preferred contact
+            <select
+              value={lead.preferredContactMethod}
+              onChange={(event) =>
+                updateLead(
+                  "preferredContactMethod",
+                  event.target.value as LeadSubmission["preferredContactMethod"]
+                )
+              }
+            >
+              <option value="email">Email</option>
+              <option value="phone">Phone</option>
+              <option value="either">Either</option>
+            </select>
+          </label>
+
+          <label>
+            Business challenge
+            <textarea
               required
-              value={lead.firstName}
-              onChange={(event) => updateLead("firstName", event.target.value)}
-              autoComplete="given-name"
+              rows={5}
+              value={lead.businessChallenge}
+              onChange={(event) => updateLead("businessChallenge", event.target.value)}
             />
           </label>
-          <label>
-            Last name
-            <input
-              value={lead.lastName}
-              onChange={(event) => updateLead("lastName", event.target.value)}
-              autoComplete="family-name"
-            />
-          </label>
-          <label>
-            Email
-            <input
-              required
-              type="email"
-              value={lead.email}
-              onChange={(event) => updateLead("email", event.target.value)}
-              autoComplete="email"
-            />
-          </label>
-          <label>
-            Phone
-            <input
-              value={lead.phone}
-              onChange={(event) => updateLead("phone", event.target.value)}
-              autoComplete="tel"
-            />
-          </label>
-          <label>
-            Company
-            <input
-              value={lead.company}
-              onChange={(event) => updateLead("company", event.target.value)}
-              autoComplete="organization"
-            />
-          </label>
-          <label>
-            Service interest
-            <input
-              value={lead.serviceInterest}
-              onChange={(event) => updateLead("serviceInterest", event.target.value)}
-            />
-          </label>
-          <label>
-            Budget
-            <input value={lead.budget} onChange={(event) => updateLead("budget", event.target.value)} />
-          </label>
-          <label>
-            Timeline
-            <input
-              value={lead.timeline}
-              onChange={(event) => updateLead("timeline", event.target.value)}
-            />
-          </label>
-        </div>
 
-        <label>
-          Preferred contact
-          <select
-            value={lead.preferredContactMethod}
-            onChange={(event) =>
-              updateLead(
-                "preferredContactMethod",
-                event.target.value as LeadSubmission["preferredContactMethod"]
-              )
-            }
-          >
-            <option value="email">Email</option>
-            <option value="phone">Phone</option>
-            <option value="either">Either</option>
-          </select>
-        </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={lead.consentToFollowUp}
+              onChange={(event) => updateLead("consentToFollowUp", event.target.checked)}
+            />
+            I consent to being contacted about this request.
+          </label>
 
-        <label>
-          Business challenge
-          <textarea
-            required
-            rows={5}
-            value={lead.businessChallenge}
-            onChange={(event) => updateLead("businessChallenge", event.target.value)}
-          />
-        </label>
+          <button type="submit" disabled={leadState.status === "submitting"}>
+            {leadState.status === "submitting" ? "Submitting..." : "Submit lead"}
+          </button>
 
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={lead.consentToFollowUp}
-            onChange={(event) => updateLead("consentToFollowUp", event.target.checked)}
-          />
-          I consent to being contacted about this request.
-        </label>
-
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Submitting..." : "Submit lead"}
-        </button>
-
-        {state.status === "success" ? (
-          <p role="status" className="success">
-            Lead captured. Reference {state.leadId}.
-          </p>
-        ) : null}
-        {state.status === "error" ? (
-          <p role="alert" className="error">
-            {state.message}
-          </p>
-        ) : null}
-      </form>
+          {leadState.status === "success" ? (
+            <p role="status" className="success">
+              Lead captured. Reference {leadState.leadId}.
+            </p>
+          ) : null}
+          {leadState.status === "error" ? (
+            <p role="alert" className="error">
+              {leadState.message}
+            </p>
+          ) : null}
+        </form>
       </section>
     </main>
   );
