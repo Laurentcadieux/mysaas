@@ -135,25 +135,65 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="product-panel" aria-labelledby="page-title">
-        <p className="eyebrow">AdviceConnect MVP</p>
-        <h1 id="page-title">Build the first AdviceConnect workspace.</h1>
+        <nav className="topline" aria-label="Product">
+          <strong>AdviceConnect</strong>
+          <span>Private SaaS pilot</span>
+        </nav>
+        <p className="eyebrow">Lead agents for service businesses</p>
+        <h1 id="page-title">Launch a website agent that turns conversations into qualified leads.</h1>
         <p className="lede">
-          Start with the SaaS foundation: organization, owner, plan, project, and the first
-          lead-generation agent.
+          Create the workspace, publish the first lead-generation agent, and route every
+          conversation into structured sales data.
         </p>
+        <div className="hero-actions" aria-label="Primary actions">
+          <a href="#workspace-setup">Launch workspace</a>
+          <a href="#lead-preview">Preview lead flow</a>
+        </div>
+        <div className="metric-strip" aria-label="Product proof points">
+          <span>
+            <strong>14-day</strong>
+            pilot-ready trial
+          </span>
+          <span>
+            <strong>Fixed</strong>
+            monthly plans
+          </span>
+          <span>
+            <strong>Private</strong>
+            backend routing
+          </span>
+        </div>
         <div className="phase-list" aria-label="Build phases">
           <span>Foundation</span>
           <span>Agent builder</span>
           <span>Publishing</span>
           <span>Payload processing</span>
         </div>
+        <div className="conversation-preview" aria-label="Conversation preview">
+          <p>Visitor asks about services, budget, and timing.</p>
+          <p>AdviceConnect captures urgency, intent, contact details, and next action.</p>
+          <p>Sales team gets a structured lead instead of a raw chat transcript.</p>
+        </div>
       </section>
 
       <section className="workspace-column" aria-label="Application setup">
-        <form className="workspace-form" onSubmit={handleWorkspaceSubmit}>
+        <div className="launch-header">
+          <p className="section-kicker">Go to market setup</p>
+          <h2>Turn the first customer into a working workspace.</h2>
+          <p>
+            This creates the owner, organization, starter subscription, launch project, and first
+            lead agent in one path.
+          </p>
+        </div>
+
+        <form
+          id="workspace-setup"
+          className="workspace-form"
+          onSubmit={handleWorkspaceSubmit}
+        >
           <div>
-            <p className="section-kicker">Phase 1</p>
-            <h2>Workspace foundation</h2>
+            <p className="section-kicker">Step 1</p>
+            <h3>Workspace foundation</h3>
           </div>
 
           <div className="form-grid">
@@ -241,10 +281,15 @@ export function App() {
           ) : null}
         </form>
 
-      <form className="lead-form" onSubmit={handleSubmit} aria-label="Lead capture form">
+      <form
+        id="lead-preview"
+        className="lead-form"
+        onSubmit={handleSubmit}
+        aria-label="Lead capture form"
+      >
         <div>
-          <p className="section-kicker">Lead preview</p>
-          <h2>Capture a structured lead</h2>
+          <p className="section-kicker">Step 2</p>
+          <h3>Preview the structured lead intake</h3>
         </div>
         <div className="form-grid">
           <label>

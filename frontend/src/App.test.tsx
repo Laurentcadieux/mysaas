@@ -36,7 +36,7 @@ describe("App", () => {
   it("renders required capture fields", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: /build the first adviceconnect/i })).toBeVisible();
+    expect(screen.getByRole("heading", { name: /launch a website agent/i })).toBeVisible();
     expect(screen.getByLabelText(/organization/i)).toBeRequired();
     expect(screen.getByLabelText(/owner email/i)).toBeRequired();
     expect(screen.getByLabelText(/first name/i)).toBeRequired();
