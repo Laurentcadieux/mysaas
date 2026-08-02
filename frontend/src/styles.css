@@ -290,6 +290,28 @@ button:disabled {
   gap: 10px;
 }
 
+.revenue-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.revenue-strip span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 14px;
+  color: #526070;
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+.revenue-strip strong {
+  color: #17202e;
+  font-size: 1.45rem;
+}
+
 .customer-list p {
   margin: 0;
   color: #526070;
@@ -298,7 +320,7 @@ button:disabled {
 
 .customer-list article {
   display: grid;
-  grid-template-columns: minmax(160px, 1.2fr) minmax(180px, 1fr) minmax(110px, 0.7fr) minmax(80px, 0.5fr);
+  grid-template-columns: minmax(150px, 1.1fr) minmax(150px, 1fr) minmax(90px, 0.7fr);
   gap: 12px;
   align-items: center;
   border: 1px solid #d9dee6;
@@ -307,6 +329,20 @@ button:disabled {
   background: #f8fafc;
   color: #29354a;
   font-weight: 700;
+}
+
+.customer-list article div {
+  display: grid;
+  gap: 4px;
+}
+
+.customer-list article span,
+.customer-list article label {
+  font-size: 0.86rem;
+}
+
+.customer-list article label {
+  min-width: 120px;
 }
 
 @media (max-width: 840px) {
@@ -339,7 +375,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .customer-list article {
+  .customer-list article,
+  .revenue-strip {
     grid-template-columns: 1fr;
   }
 }

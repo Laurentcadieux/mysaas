@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import {
   createAgentSetup,
   listCustomers,
+  listPlans,
   registerCustomer,
   submitLead,
+  updateSubscription,
   type AgentSetupSubmission,
   type CustomerRegistrationResponse,
   type CustomerRegistrationSubmission,
   type CustomerSummary,
-  type LeadSubmission
+  type LeadSubmission,
+  type Plan,
+  type PlanCode,
+  type SubscriptionStatus
 } from "./api.js";
 
 type SubmitState =
@@ -48,7 +53,8 @@ const initialRegistration: CustomerRegistrationSubmission = {
   organizationName: "",
   website: "",
   ownerName: "",
-  ownerEmail: ""
+  ownerEmail: "",
+  planCode: "lead-starter"
 };
 
 const initialAgent: AgentSetupSubmission = {
@@ -72,6 +78,8 @@ export function App() {
   const [agent, setAgent] = useState<AgentSetupSubmission>(initialAgent);
   const [agentState, setAgentState] = useState<AgentState>({ status: "idle" });
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [subscriptionMessage, setSubscriptionMessage] = useState("");
   const [agentOrganizationId, setAgentOrganizationId] = useState("");
 
   const selectedOrganizationId =
@@ -81,6 +89,7 @@ export function App() {
 
   useEffect(() => {
     void refreshCustomers();
+    void refreshPlans();
   }, []);
 
   useEffect(() => {
@@ -110,6 +119,32 @@ export function App() {
       setCustomers(response.customers);
     } catch {
       setCustomers([]);
+    }
+  }
+
+  async function refreshPlans() {
+    try {
+      const response = await listPlans();
+      setPlans(response.plans ?? []);
+    } catch {
+      setPlans([]);
+    }
+  }
+
+  async function handleSubscriptionUpdate(
+    organizationId: string,
+    planCode: PlanCode,
+    status: SubscriptionStatus
+  ) {
+    setSubscriptionMessage("");
+    try {
+      await updateSubscription(organizationId, { planCode, status });
+      await refreshCustomers();
+      setSubscriptionMessage("Subscription updated.");
+    } catch (error) {
+      setSubscriptionMessage(
+        error instanceof Error ? error.message : "We could not update the subscription."
+      );
     }
   }
 
@@ -227,10 +262,10 @@ export function App() {
           <span>Private SaaS pilot</span>
         </nav>
         <p className="eyebrow">Lead agents for service businesses</p>
-        <h1 id="page-title">Register customers and launch their first conversational lead agent.</h1>
+        <h1 id="page-title">Run AdviceConnect as a subscription SaaS.</h1>
         <p className="lede">
-          Run AdviceConnect as a business: onboard companies, configure their first lead agent,
-          and see which customers are active from the management view.
+          Onboard paying customers, choose their plan, enforce agent limits, and manage billing
+          status from the operator dashboard.
         </p>
         <div className="hero-actions" aria-label="Primary actions">
           <a href="#customer-registration">Register customer</a>
@@ -239,21 +274,21 @@ export function App() {
         <div className="metric-strip" aria-label="Product proof points">
           <span>
             <strong>Step 1</strong>
-            customer account
+            customer account + plan
           </span>
           <span>
             <strong>Step 2</strong>
-            lead agent setup
+            subscription-gated agent
           </span>
           <span>
             <strong>Step 3</strong>
-            management visibility
+            MRR visibility
           </span>
         </div>
         <div className="conversation-preview" aria-label="Conversation preview">
-          <p>New customer registers their company and owner account.</p>
-          <p>They configure a conversational agent with greeting, instructions, and questions.</p>
-          <p>You see the company, owner, plan, and agent count in the management panel.</p>
+          <p>New customer registers their company, owner account, and subscription plan.</p>
+          <p>Agent creation checks subscription status and the selected plan’s included agents.</p>
+          <p>You see plan value, status, renewal date, and customer counts in management.</p>
         </div>
       </section>
 
@@ -262,7 +297,8 @@ export function App() {
           <p className="section-kicker">Go to market operation</p>
           <h2>Onboard a customer, create their first agent, then manage the account.</h2>
           <p>
-            This is the first business-running flow for AdviceConnect, not only a lead form.
+            This is now a subscription operating flow: plan first, agent limits second, admin
+            billing control third.
           </p>
         </div>
 
@@ -313,6 +349,25 @@ export function App() {
                 autoComplete="email"
               />
             </label>
+            <label>
+              Subscription plan
+              <select
+                value={registration.planCode}
+                onChange={(event) =>
+                  updateRegistration("planCode", event.target.value as PlanCode)
+                }
+              >
+                {plans.length === 0 ? (
+                  <option value="lead-starter">Lead Starter</option>
+                ) : (
+                  plans.map((plan) => (
+                    <option key={plan.code} value={plan.code}>
+                      {plan.name} - {formatCurrency(plan.monthlyPriceCents)}/mo
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
           </div>
 
           <button type="submit" disabled={registrationState.status === "submitting"}>
@@ -324,6 +379,7 @@ export function App() {
               <strong>{registrationState.customer.organization.name}</strong>
               <span>Owner: {registrationState.customer.owner.email}</span>
               <span>Plan: {registrationState.customer.subscription.planCode}</span>
+              <span>Status: {registrationState.customer.subscription.status}</span>
               <span>Ready for conversational lead agent setup.</span>
             </div>
           ) : null}
@@ -431,7 +487,21 @@ export function App() {
         <section id="management" className="management-panel" aria-labelledby="management-title">
           <div>
             <p className="section-kicker">Management</p>
-            <h3 id="management-title">Registered companies</h3>
+            <h3 id="management-title">Subscription customers</h3>
+          </div>
+          <div className="revenue-strip" aria-label="Subscription totals">
+            <span>
+              <strong>{customers.length}</strong>
+              customers
+            </span>
+            <span>
+              <strong>{formatCurrency(calculateMrr(customers))}</strong>
+              monthly recurring revenue
+            </span>
+            <span>
+              <strong>{customers.filter((customer) => customer.subscriptionStatus === "active").length}</strong>
+              active paid
+            </span>
           </div>
           <div className="customer-list">
             {customers.length === 0 ? (
@@ -439,14 +509,59 @@ export function App() {
             ) : (
               customers.map((customer) => (
                 <article key={customer.organizationId}>
-                  <strong>{customer.organizationName}</strong>
-                  <span>{customer.ownerEmail}</span>
-                  <span>{customer.planCode}</span>
-                  <span>{customer.agentCount} agents</span>
+                  <div>
+                    <strong>{customer.organizationName}</strong>
+                    <span>{customer.ownerEmail}</span>
+                  </div>
+                  <span>
+                    {customer.planName} · {formatCurrency(customer.monthlyPriceCents)}/mo
+                  </span>
+                  <span>
+                    {customer.agentCount} of {plans.find((plan) => plan.code === customer.planCode)?.includedAgents ?? "?"} agents
+                  </span>
+                  <span>Renews {formatDate(customer.currentPeriodEnd)}</span>
+                  <label>
+                    Plan
+                    <select
+                      value={customer.planCode}
+                      onChange={(event) =>
+                        void handleSubscriptionUpdate(
+                          customer.organizationId,
+                          event.target.value as PlanCode,
+                          customer.subscriptionStatus
+                        )
+                      }
+                    >
+                      {plans.map((plan) => (
+                        <option key={plan.code} value={plan.code}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Status
+                    <select
+                      value={customer.subscriptionStatus}
+                      onChange={(event) =>
+                        void handleSubscriptionUpdate(
+                          customer.organizationId,
+                          customer.planCode,
+                          event.target.value as SubscriptionStatus
+                        )
+                      }
+                    >
+                      <option value="trialing">Trialing</option>
+                      <option value="active">Active</option>
+                      <option value="past_due">Past due</option>
+                      <option value="canceled">Canceled</option>
+                    </select>
+                  </label>
                 </article>
               ))
             )}
           </div>
+          {subscriptionMessage ? <p role="status" className="success">{subscriptionMessage}</p> : null}
         </section>
 
         <form
@@ -579,5 +694,28 @@ export function App() {
         </form>
       </section>
     </main>
+  );
+}
+
+function calculateMrr(customers: CustomerSummary[]): number {
+  return customers
+    .filter((customer) => customer.subscriptionStatus === "active")
+    .reduce((total, customer) => total + customer.monthlyPriceCents, 0);
+}
+
+function formatCurrency(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100);
+}
+
+function formatDate(value: string): string {
+  if (!value) {
+    return "not set";
+  }
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
+    new Date(value)
   );
 }

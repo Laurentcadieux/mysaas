@@ -16,6 +16,7 @@ export interface CustomerRegistrationInput {
   website: string;
   ownerName: string;
   ownerEmail: string;
+  planCode: PlanCode;
 }
 
 export interface AgentSetupInput {
@@ -50,11 +51,23 @@ export interface Membership {
   createdAt: string;
 }
 
+export type PlanCode = "lead-starter" | "lead-professional" | "advice-professional";
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
+export interface Plan {
+  code: PlanCode;
+  name: string;
+  monthlyPriceCents: number;
+  includedAgents: number;
+  includedTeamMembers: number;
+  monthlyConversations: number;
+}
+
 export interface Subscription {
   id: string;
   organizationId: string;
-  planCode: "lead-starter";
-  status: "trialing";
+  planCode: PlanCode;
+  status: SubscriptionStatus;
   currentPeriodStart: string;
   currentPeriodEnd: string;
   createdAt: string;
@@ -111,10 +124,19 @@ export interface CustomerSummary {
   ownerName: string;
   ownerEmail: string;
   planCode: string;
+  planName: string;
+  monthlyPriceCents: number;
   subscriptionStatus: string;
+  currentPeriodEnd: string;
   projectCount: number;
   agentCount: number;
   createdAt: string;
+}
+
+export interface SubscriptionUpdateInput {
+  organizationId: string;
+  planCode: PlanCode;
+  status: SubscriptionStatus;
 }
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -180,8 +202,15 @@ export function validateCustomerRegistrationPayload(body: unknown): CustomerRegi
   const website = readString(payload, "website", 240);
   const ownerName = readString(payload, "ownerName", 120, true);
   const ownerEmail = readString(payload, "ownerEmail", 254, true);
+  const planCode = readString(payload, "planCode", 80);
 
-  for (const [name, result] of Object.entries({ organizationName, website, ownerName, ownerEmail })) {
+  for (const [name, result] of Object.entries({
+    organizationName,
+    website,
+    ownerName,
+    ownerEmail,
+    planCode
+  })) {
     if (result.error) {
       fields[name] = result.error;
     }
@@ -190,6 +219,10 @@ export function validateCustomerRegistrationPayload(body: unknown): CustomerRegi
   const normalizedOwnerEmail = ownerEmail.value.toLowerCase();
   if (!fields.ownerEmail && !emailPattern.test(normalizedOwnerEmail)) {
     fields.ownerEmail = "ownerEmail must be a valid email address.";
+  }
+  const normalizedPlanCode = normalizePlanCode(planCode.value || "lead-starter");
+  if (!normalizedPlanCode) {
+    fields.planCode = "planCode must be an available subscription plan.";
   }
 
   if (Object.keys(fields).length > 0) {
@@ -200,7 +233,8 @@ export function validateCustomerRegistrationPayload(body: unknown): CustomerRegi
     organizationName: organizationName.value,
     website: website.value,
     ownerName: ownerName.value,
-    ownerEmail: normalizedOwnerEmail
+    ownerEmail: normalizedOwnerEmail,
+    planCode: normalizedPlanCode ?? "lead-starter"
   };
 }
 
@@ -247,6 +281,46 @@ export function validateAgentSetupPayload(
     greeting: greeting.value,
     instructions: instructions.value,
     qualificationQuestions: qualificationQuestions.value
+  };
+}
+
+export function validateSubscriptionUpdatePayload(
+  organizationId: string,
+  body: unknown
+): SubscriptionUpdateInput {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new LeadValidationError({ body: "Request body must be an object." });
+  }
+
+  const payload = body as Record<string, unknown>;
+  const fields: Record<string, string> = {};
+  const planCode = readString(payload, "planCode", 80, true);
+  const status = readString(payload, "status", 40, true);
+  const normalizedPlanCode = normalizePlanCode(planCode.value);
+  const normalizedStatus = normalizeSubscriptionStatus(status.value);
+
+  if (!organizationId.trim()) {
+    fields.organizationId = "organizationId is required.";
+  }
+  if (planCode.error) {
+    fields.planCode = planCode.error;
+  } else if (!normalizedPlanCode) {
+    fields.planCode = "planCode must be an available subscription plan.";
+  }
+  if (status.error) {
+    fields.status = status.error;
+  } else if (!normalizedStatus) {
+    fields.status = "status must be trialing, active, past_due, or canceled.";
+  }
+
+  if (Object.keys(fields).length > 0) {
+    throw new LeadValidationError(fields);
+  }
+
+  return {
+    organizationId: organizationId.trim(),
+    planCode: normalizedPlanCode ?? "lead-starter",
+    status: normalizedStatus ?? "trialing"
   };
 }
 
@@ -345,13 +419,31 @@ export function createCustomerRegistrationFromInput(
     subscription: {
       id: randomUUID(),
       organizationId,
-      planCode: "lead-starter",
+      planCode: input.planCode,
       status: "trialing",
       currentPeriodStart: timestamp,
       currentPeriodEnd: addDays(now, 14).toISOString(),
       createdAt: timestamp
     }
   };
+}
+
+function normalizePlanCode(value: string): PlanCode | undefined {
+  if (
+    value === "lead-starter" ||
+    value === "lead-professional" ||
+    value === "advice-professional"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeSubscriptionStatus(value: string): SubscriptionStatus | undefined {
+  if (value === "trialing" || value === "active" || value === "past_due" || value === "canceled") {
+    return value;
+  }
+  return undefined;
 }
 
 export function createAgentSetupFromInput(input: AgentSetupInput, now = new Date()): AgentSetup {

@@ -7,6 +7,7 @@ import {
   createWorkspaceSetupFromInput,
   validateAgentSetupPayload,
   validateCustomerRegistrationPayload,
+  validateSubscriptionUpdatePayload,
   validateWorkspaceSetupPayload
 } from "./foundationContract.js";
 import { createLeadFromInput, LeadValidationError, validateLeadPayload } from "./leadContract.js";
@@ -59,12 +60,48 @@ export function createApp(config: AppConfig, repository: ApplicationStore) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Organization not found." } });
         return;
       }
+      if (error instanceof Error && error.message === "Plan agent limit reached.") {
+        res.status(409).json({
+          error: {
+            code: "PLAN_LIMIT_REACHED",
+            message: "This subscription plan has reached its included agent limit."
+          }
+        });
+        return;
+      }
+      if (error instanceof Error && error.message.startsWith("Subscription is")) {
+        res.status(402).json({
+          error: {
+            code: "SUBSCRIPTION_REQUIRED",
+            message: error.message
+          }
+        });
+        return;
+      }
       next(error);
     }
   });
 
+  app.get("/api/plans", (_req, res) => {
+    res.status(200).json({ plans: repository.listPlans() });
+  });
+
   app.get("/api/admin/customers", (_req, res) => {
     res.status(200).json({ customers: repository.listCustomerSummaries() });
+  });
+
+  app.patch("/api/admin/subscriptions/:organizationId", (req, res, next) => {
+    try {
+      const input = validateSubscriptionUpdatePayload(req.params.organizationId, req.body);
+      const subscription = repository.updateSubscription(input);
+      res.status(200).json({ subscription });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Organization not found.") {
+        res.status(404).json({ error: { code: "NOT_FOUND", message: "Organization not found." } });
+        return;
+      }
+      next(error);
+    }
   });
 
   app.get("/api/foundation/workspaces/:organizationId", (req, res) => {

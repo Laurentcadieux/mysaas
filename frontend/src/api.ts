@@ -49,8 +49,8 @@ export interface WorkspaceSetupResponse {
     };
     subscription: {
       id: string;
-      planCode: string;
-      status: string;
+      planCode: PlanCode;
+      status: SubscriptionStatus;
       currentPeriodEnd: string;
     };
     project: {
@@ -71,7 +71,9 @@ export interface WorkspaceSetupResponse {
 export type CustomerRegistrationSubmission = Pick<
   WorkspaceSetupSubmission,
   "organizationName" | "website" | "ownerName" | "ownerEmail"
->;
+> & {
+  planCode: PlanCode;
+};
 
 export interface CustomerRegistrationResponse {
   customer: Pick<WorkspaceSetupResponse["workspace"], "organization" | "owner" | "subscription">;
@@ -95,11 +97,26 @@ export interface CustomerSummary {
   website: string;
   ownerName: string;
   ownerEmail: string;
-  planCode: string;
-  subscriptionStatus: string;
+  planCode: PlanCode;
+  planName: string;
+  monthlyPriceCents: number;
+  subscriptionStatus: SubscriptionStatus;
+  currentPeriodEnd: string;
   projectCount: number;
   agentCount: number;
   createdAt: string;
+}
+
+export type PlanCode = "lead-starter" | "lead-professional" | "advice-professional";
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
+export interface Plan {
+  code: PlanCode;
+  name: string;
+  monthlyPriceCents: number;
+  includedAgents: number;
+  includedTeamMembers: number;
+  monthlyConversations: number;
 }
 
 export class ApiError extends Error {
@@ -222,4 +239,36 @@ export async function listCustomers(): Promise<{ customers: CustomerSummary[] }>
   }
 
   return body as { customers: CustomerSummary[] };
+}
+
+export async function listPlans(): Promise<{ plans: Plan[] }> {
+  const response = await fetch(`${configuredBaseUrl}/api/plans`);
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message = body?.error?.message ?? "We could not load plans right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body as { plans: Plan[] };
+}
+
+export async function updateSubscription(
+  organizationId: string,
+  payload: { planCode: PlanCode; status: SubscriptionStatus }
+): Promise<CustomerRegistrationResponse["customer"]["subscription"]> {
+  const response = await fetch(`${configuredBaseUrl}/api/admin/subscriptions/${organizationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message =
+      body?.error?.message ?? "We could not update the subscription right now. Please try again.";
+    throw new ApiError(message);
+  }
+
+  return body.subscription as CustomerRegistrationResponse["customer"]["subscription"];
 }

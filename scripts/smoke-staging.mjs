@@ -10,7 +10,9 @@ const leadEmail = `smoke+${Date.now()}@example.invalid`;
 
 await checkHealth(`${root}/health`, "frontend");
 await checkHealth(`${root}/api/health`, "backend");
+await checkPlans(`${root}/api/plans`);
 const organizationId = await registerCustomer(`${root}/api/customers/register`, leadEmail);
+await activateSubscription(`${root}/api/admin/subscriptions/${organizationId}`);
 await createAgent(`${root}/api/organizations/${organizationId}/agents`);
 await checkManagement(`${root}/api/admin/customers`, organizationId);
 await submitLead(`${root}/api/leads`, leadEmail);
@@ -84,7 +86,8 @@ async function registerCustomer(url, email) {
       organizationName: "MySaas Smoke Test",
       website: "https://example.invalid",
       ownerName: "Staging Smoke",
-      ownerEmail: email
+      ownerEmail: email,
+      planCode: "lead-professional"
     })
   });
 
@@ -98,6 +101,34 @@ async function registerCustomer(url, email) {
     throw new Error("registration response did not include the expected organization");
   }
   return payload.customer.organization.id;
+}
+
+async function checkPlans(url) {
+  const response = await fetch(url, { headers: { accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`plans check failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.plans?.some((plan) => plan.code === "lead-professional")) {
+    throw new Error("plans check did not include the expected subscription plan");
+  }
+}
+
+async function activateSubscription(url) {
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({ planCode: "lead-professional", status: "active" })
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`subscription activation failed: ${response.status} ${response.statusText}\n${body}`);
+  }
 }
 
 async function createAgent(url) {

@@ -160,12 +160,14 @@ describe("backend api", () => {
       organizationName: "Northstar Advisory",
       website: "https://northstar.example",
       ownerName: "Ava Smith",
-      ownerEmail: "AVA@EXAMPLE.COM"
+      ownerEmail: "AVA@EXAMPLE.COM",
+      planCode: "lead-professional"
     });
 
     expect(registrationResponse.status).toBe(201);
     expect(registrationResponse.body.customer.organization.name).toBe("Northstar Advisory");
     expect(registrationResponse.body.customer.owner.email).toBe("ava@example.com");
+    expect(registrationResponse.body.customer.subscription.planCode).toBe("lead-professional");
 
     const organizationId = registrationResponse.body.customer.organization.id;
     const agentResponse = await request(harness.app)
@@ -190,9 +192,84 @@ describe("backend api", () => {
     expect(managementResponse.body.customers[0]).toMatchObject({
       organizationName: "Northstar Advisory",
       ownerEmail: "ava@example.com",
+      planName: "Lead Professional",
+      monthlyPriceCents: 14900,
       agentCount: 1,
       projectCount: 1
     });
+  });
+
+  it("lists plans and lets management update subscription plan and status", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const plansResponse = await request(harness.app).get("/api/plans");
+    expect(plansResponse.status).toBe(200);
+    expect(plansResponse.body.plans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "lead-starter", monthlyPriceCents: 4900 }),
+        expect.objectContaining({ code: "lead-professional", includedAgents: 5 })
+      ])
+    );
+
+    const registrationResponse = await request(harness.app).post("/api/customers/register").send({
+      organizationName: "Northstar Advisory",
+      website: "https://northstar.example",
+      ownerName: "Ava Smith",
+      ownerEmail: "ava@example.com",
+      planCode: "lead-starter"
+    });
+
+    const organizationId = registrationResponse.body.customer.organization.id;
+    const updateResponse = await request(harness.app)
+      .patch(`/api/admin/subscriptions/${organizationId}`)
+      .send({ planCode: "lead-professional", status: "active" });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.subscription).toMatchObject({
+      organizationId,
+      planCode: "lead-professional",
+      status: "active"
+    });
+
+    const managementResponse = await request(harness.app).get("/api/admin/customers");
+    expect(managementResponse.body.customers[0]).toMatchObject({
+      planCode: "lead-professional",
+      subscriptionStatus: "active"
+    });
+  });
+
+  it("blocks agent creation when a starter subscription reaches its included agent limit", async () => {
+    const harness = makeHarness();
+    cleanup = harness.cleanup;
+
+    const registrationResponse = await request(harness.app).post("/api/customers/register").send({
+      organizationName: "Northstar Advisory",
+      website: "https://northstar.example",
+      ownerName: "Ava Smith",
+      ownerEmail: "ava@example.com",
+      planCode: "lead-starter"
+    });
+
+    const organizationId = registrationResponse.body.customer.organization.id;
+    const agentPayload = {
+      projectName: "Website lead generation",
+      agentName: "Northstar concierge",
+      greeting: "Hi, I can help route your request.",
+      instructions: "Ask for the visitor need, urgency, and preferred next step.",
+      qualificationQuestions: "What do you need?\nWhen do you need it?"
+    };
+
+    expect(
+      await request(harness.app).post(`/api/organizations/${organizationId}/agents`).send(agentPayload)
+    ).toHaveProperty("status", 201);
+
+    const blockedResponse = await request(harness.app)
+      .post(`/api/organizations/${organizationId}/agents`)
+      .send({ ...agentPayload, agentName: "Second lead concierge" });
+
+    expect(blockedResponse.status).toBe(409);
+    expect(blockedResponse.body.error).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
   });
 
   it("rejects invalid workspace setup payloads with field errors", async () => {

@@ -5,6 +5,9 @@ import type {
   AgentSetup,
   CustomerRegistration,
   CustomerSummary,
+  Plan,
+  Subscription,
+  SubscriptionUpdateInput,
   WorkspaceSetup
 } from "./foundationContract.js";
 import type { Lead } from "./leadContract.js";
@@ -19,7 +22,9 @@ export interface ApplicationStore extends LeadStore {
   createAgentSetup(setup: AgentSetup): AgentSetup;
   createWorkspaceSetup(setup: WorkspaceSetup): WorkspaceSetup;
   getWorkspaceSetup(organizationId: string): WorkspaceSetup | undefined;
+  listPlans(): Plan[];
   listCustomerSummaries(limit?: number): CustomerSummary[];
+  updateSubscription(input: SubscriptionUpdateInput): Subscription;
 }
 
 export class LeadRepository implements ApplicationStore {
@@ -104,10 +109,31 @@ export class LeadRepository implements ApplicationStore {
 
   createAgentSetup(setup: AgentSetup): AgentSetup {
     const organization = this.db
-      .prepare("select id from organizations where id = ?")
+      .prepare(
+        `select
+          organizations.id,
+          subscriptions.status as subscription_status,
+          plans.included_agents as included_agents,
+          count(agents.id) as agent_count
+        from organizations
+        join subscriptions on subscriptions.organization_id = organizations.id
+        join plans on plans.code = subscriptions.plan_code
+        left join agents on agents.organization_id = organizations.id
+        where organizations.id = ?
+        group by organizations.id`
+      )
       .get(setup.project.organizationId);
     if (!organization) {
       throw new Error("Organization not found.");
+    }
+    if (String(organization.subscription_status) === "canceled") {
+      throw new Error("Subscription is canceled.");
+    }
+    if (String(organization.subscription_status) === "past_due") {
+      throw new Error("Subscription is past due.");
+    }
+    if (Number(organization.agent_count ?? 0) >= Number(organization.included_agents ?? 0)) {
+      throw new Error("Plan agent limit reached.");
     }
 
     this.db.exec("begin");
@@ -193,6 +219,19 @@ export class LeadRepository implements ApplicationStore {
     return row ? rowToWorkspaceSetup(row) : undefined;
   }
 
+  listPlans(): Plan[] {
+    return this.db
+      .prepare(
+        `select
+          code, name, monthly_price_cents, included_agents,
+          included_team_members, monthly_conversations
+        from plans
+        order by monthly_price_cents asc`
+      )
+      .all()
+      .map(rowToPlan);
+  }
+
   listCustomerSummaries(limit = 100): CustomerSummary[] {
     return this.db
       .prepare(
@@ -204,13 +243,17 @@ export class LeadRepository implements ApplicationStore {
           users.full_name as owner_full_name,
           users.email as owner_email,
           subscriptions.plan_code as subscription_plan_code,
+          plans.name as plan_name,
+          plans.monthly_price_cents as monthly_price_cents,
           subscriptions.status as subscription_status,
+          subscriptions.current_period_end as subscription_current_period_end,
           count(distinct projects.id) as project_count,
           count(distinct agents.id) as agent_count
         from organizations
         join memberships on memberships.organization_id = organizations.id
         join users on users.id = memberships.user_id
         join subscriptions on subscriptions.organization_id = organizations.id
+        join plans on plans.code = subscriptions.plan_code
         left join projects on projects.organization_id = organizations.id
         left join agents on agents.organization_id = organizations.id
         group by organizations.id
@@ -219,6 +262,36 @@ export class LeadRepository implements ApplicationStore {
       )
       .all(limit)
       .map(rowToCustomerSummary);
+  }
+
+  updateSubscription(input: SubscriptionUpdateInput): Subscription {
+    const existing = this.db
+      .prepare("select id from subscriptions where organization_id = ?")
+      .get(input.organizationId);
+    if (!existing) {
+      throw new Error("Organization not found.");
+    }
+
+    const now = new Date();
+    const periodEnd = input.status === "canceled" ? now : addDays(now, 30);
+    this.db
+      .prepare(
+        `update subscriptions
+         set plan_code = ?, status = ?, current_period_start = ?, current_period_end = ?
+         where organization_id = ?`
+      )
+      .run(
+        input.planCode,
+        input.status,
+        now.toISOString(),
+        periodEnd.toISOString(),
+        input.organizationId
+      );
+
+    const row = this.db
+      .prepare("select * from subscriptions where organization_id = ?")
+      .get(input.organizationId);
+    return rowToSubscription(row as Record<string, unknown>);
   }
 
   getSchemaVersion(): number {
@@ -488,8 +561,8 @@ function rowToWorkspaceSetup(row: Record<string, unknown>): WorkspaceSetup {
     subscription: {
       id: String(row.subscription_id),
       organizationId,
-      planCode: String(row.subscription_plan_code) as "lead-starter",
-      status: String(row.subscription_status) as "trialing",
+      planCode: String(row.subscription_plan_code) as WorkspaceSetup["subscription"]["planCode"],
+      status: String(row.subscription_status) as WorkspaceSetup["subscription"]["status"],
       currentPeriodStart: String(row.subscription_current_period_start),
       currentPeriodEnd: String(row.subscription_current_period_end),
       createdAt: String(row.subscription_created_at)
@@ -518,6 +591,29 @@ function rowToWorkspaceSetup(row: Record<string, unknown>): WorkspaceSetup {
   };
 }
 
+function rowToPlan(row: Record<string, unknown>): Plan {
+  return {
+    code: String(row.code) as Plan["code"],
+    name: String(row.name),
+    monthlyPriceCents: Number(row.monthly_price_cents),
+    includedAgents: Number(row.included_agents),
+    includedTeamMembers: Number(row.included_team_members),
+    monthlyConversations: Number(row.monthly_conversations)
+  };
+}
+
+function rowToSubscription(row: Record<string, unknown>): Subscription {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    planCode: String(row.plan_code) as Subscription["planCode"],
+    status: String(row.status) as Subscription["status"],
+    currentPeriodStart: String(row.current_period_start),
+    currentPeriodEnd: String(row.current_period_end),
+    createdAt: String(row.created_at)
+  };
+}
+
 function rowToCustomerSummary(row: Record<string, unknown>): CustomerSummary {
   return {
     organizationId: String(row.organization_id),
@@ -526,9 +622,18 @@ function rowToCustomerSummary(row: Record<string, unknown>): CustomerSummary {
     ownerName: String(row.owner_full_name),
     ownerEmail: String(row.owner_email),
     planCode: String(row.subscription_plan_code),
+    planName: String(row.plan_name),
+    monthlyPriceCents: Number(row.monthly_price_cents),
     subscriptionStatus: String(row.subscription_status),
+    currentPeriodEnd: String(row.subscription_current_period_end),
     projectCount: Number(row.project_count ?? 0),
     agentCount: Number(row.agent_count ?? 0),
     createdAt: String(row.organization_created_at)
   };
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
 }

@@ -12,7 +12,12 @@ function response(body: unknown, ok = true): Response {
 
 function mockFetch(responseBody: unknown, ok = true, delayMs = 0) {
   const fetchMock = vi.fn((url: string) => {
-    const body = url === "/api/admin/customers" ? { customers: [] } : responseBody;
+    const body =
+      url === "/api/admin/customers"
+        ? { customers: [] }
+        : url === "/api/plans"
+          ? { plans: [] }
+          : responseBody;
     return new Promise<Response>((resolve) => {
       setTimeout(() => {
         resolve(response(body, ok));
@@ -35,15 +40,21 @@ async function fillRequiredFields() {
 describe("App", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
-    vi.stubGlobal("fetch", vi.fn(async () => response({ customers: [] })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        response(url === "/api/plans" ? { plans: [] } : { customers: [] })
+      )
+    );
   });
 
   it("renders required capture fields", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: /register customers/i })).toBeVisible();
+    expect(screen.getByRole("heading", { name: /subscription saas/i })).toBeVisible();
     expect(screen.getByLabelText(/organization/i)).toBeRequired();
     expect(screen.getByLabelText(/owner email/i)).toBeRequired();
+    expect(screen.getByLabelText(/subscription plan/i)).toBeVisible();
     expect(screen.getByLabelText(/greeting/i)).toBeRequired();
     expect(screen.getByLabelText(/first name/i)).toBeRequired();
     expect(screen.getByLabelText(/^email$/i)).toBeRequired();
@@ -74,13 +85,31 @@ describe("App", () => {
           }
         });
       }
+      if (url === "/api/plans") {
+        return response({
+          plans: [
+            {
+              code: "lead-starter",
+              name: "Lead Starter",
+              monthlyPriceCents: 4900,
+              includedAgents: 1,
+              includedTeamMembers: 3,
+              monthlyConversations: 500
+            }
+          ]
+        });
+      }
       return response({
         customers: [
           {
             organizationId: "org-1",
             organizationName: "Northstar Advisory",
             ownerEmail: "ava@example.com",
+            planName: "Lead Starter",
             planCode: "lead-starter",
+            subscriptionStatus: "trialing",
+            monthlyPriceCents: 4900,
+            currentPeriodEnd: "2026-08-15T00:00:00.000Z",
             agentCount: 1
           }
         ]
@@ -105,7 +134,10 @@ describe("App", () => {
     expect(screen.getAllByText(/northstar advisory/i)[0]).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/customers/register",
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("lead-starter")
+      })
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/organizations/org-1/agents",
